@@ -40,10 +40,10 @@ const DEFAULT_WIDGETS: DashboardWidget[] = [
   { key: "deals", label: "My Deals", icon: <Briefcase className="w-4 h-4" />, visible: true, defaultLayout: { x: 6, y: 0, w: 3, h: 2 } },
   { key: "accountsSummary", label: "Accounts Summary", icon: <Building2 className="w-4 h-4" />, visible: true, defaultLayout: { x: 9, y: 0, w: 3, h: 2 } },
   
-  // Row 2: Action items + Quick Actions + Pipeline
-  { key: "actionItems", label: "Action Items", icon: <Clock className="w-4 h-4" />, visible: true, defaultLayout: { x: 0, y: 2, w: 4, h: 2 } },
-  { key: "quickActions", label: "Quick Actions", icon: <Zap className="w-4 h-4" />, visible: true, defaultLayout: { x: 4, y: 2, w: 4, h: 2 } },
-  { key: "myPipeline", label: "My Pipeline", icon: <TrendingUp className="w-4 h-4" />, visible: true, defaultLayout: { x: 8, y: 2, w: 4, h: 2 } },
+  // Row 2: Quick Actions (actionItems and myPipeline removed)
+  { key: "actionItems", label: "Action Items", icon: <Clock className="w-4 h-4" />, visible: false, defaultLayout: { x: 0, y: 2, w: 4, h: 2 } },
+  { key: "quickActions", label: "Quick Actions", icon: <Zap className="w-4 h-4" />, visible: true, defaultLayout: { x: 0, y: 2, w: 6, h: 2 } },
+  { key: "myPipeline", label: "My Pipeline", icon: <TrendingUp className="w-4 h-4" />, visible: false, defaultLayout: { x: 6, y: 2, w: 6, h: 2 } },
   
   // Row 3: Today's Agenda + Upcoming Meetings + Task Reminders
   { key: "todaysAgenda", label: "Today's Agenda", icon: <CalendarClock className="w-4 h-4" />, visible: true, defaultLayout: { x: 0, y: 4, w: 4, h: 3 } },
