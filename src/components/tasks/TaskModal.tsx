@@ -69,6 +69,7 @@ export const TaskModal = ({
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
   const [users, setUsers] = useState<{ id: string; full_name: string }[]>([]);
+  const [currentUserName, setCurrentUserName] = useState<string>('');
   const [accounts, setAccounts] = useState<{ id: string; company_name: string }[]>([]);
   const [contacts, setContacts] = useState<{ id: string; contact_name: string; account_id: string | null; account_name?: string }[]>([]);
   const [leads, setLeads] = useState<{ id: string; lead_name: string; account_id: string | null; account_name?: string }[]>([]);
@@ -78,6 +79,25 @@ export const TaskModal = ({
   const [selectedContact, setSelectedContact] = useState<typeof contacts[0] | null>(null);
   const [selectedLead, setSelectedLead] = useState<typeof leads[0] | null>(null);
   const [selectedDeal, setSelectedDeal] = useState<typeof deals[0] | null>(null);
+
+  // Fetch current user's display name
+  useEffect(() => {
+    const fetchCurrentUserName = async () => {
+      if (!user?.id) return;
+      const { data } = await supabase
+        .from('profiles')
+        .select('full_name')
+        .eq('id', user.id)
+        .maybeSingle();
+      if (data?.full_name && !data.full_name.includes('@')) {
+        setCurrentUserName(data.full_name);
+      } else {
+        // Fallback to first part of email
+        setCurrentUserName(user.email?.split('@')[0] || 'Current User');
+      }
+    };
+    fetchCurrentUserName();
+  }, [user?.id, user?.email]);
 
   const form = useForm<TaskFormData>({
     resolver: zodResolver(taskSchema),
@@ -551,7 +571,7 @@ export const TaskModal = ({
             {user && (
               <FormItem>
                 <FormLabel>Created By</FormLabel>
-                <Input value={user.email || 'Current User'} disabled className="bg-muted" />
+                <Input value={currentUserName || 'Current User'} disabled className="bg-muted" />
               </FormItem>
             )}
 
