@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { 
-  Users, FileText, Briefcase, TrendingUp, Clock, Plus, Settings2, Calendar, Activity, Bell, AlertCircle, Info, 
+  Users, FileText, Briefcase, Plus, Settings2, Calendar, Activity, Bell, 
   Mail, Building2, ListTodo, CalendarClock, ClipboardList, Check, X
 } from "lucide-react";
 import { useState, useRef, useEffect, useCallback } from "react";
@@ -460,23 +460,6 @@ const UserDashboard = () => {
     enabled: !!user?.id
   });
 
-  // Action items - enhanced
-  const { data: actionItemsData, isLoading: actionItemsLoading } = useQuery({
-    queryKey: ['user-action-items-enhanced', user?.id],
-    queryFn: async () => {
-      const { data: dealItems } = await supabase.from('deal_action_items').select('id, status, due_date, next_action').eq('assigned_to', user?.id).eq('status', 'Open').order('due_date', { ascending: true }).limit(5);
-      const { data: leadItems } = await supabase.from('lead_action_items').select('id, status, due_date, next_action').eq('assigned_to', user?.id).eq('status', 'Open').order('due_date', { ascending: true }).limit(5);
-      const allItems = [...(dealItems || []), ...(leadItems || [])];
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const overdue = allItems.filter(item => item.due_date && new Date(item.due_date) < today).length;
-      const dueToday = allItems.filter(item => item.due_date && isToday(new Date(item.due_date))).length;
-      const topItems = allItems.slice(0, 3);
-      return { total: allItems.length, overdue, dueToday, topItems };
-    },
-    enabled: !!user?.id
-  });
-
   // Upcoming meetings - enhanced with status counts using getMeetingStatus for consistency
   const { data: upcomingMeetings, isLoading: meetingsLoading } = useQuery({
     queryKey: ['user-upcoming-meetings-enhanced', user?.id],
@@ -748,7 +731,7 @@ const UserDashboard = () => {
     }).format(amount);
   };
 
-  const isLoading = leadsLoading || contactsLoading || dealsLoading || actionItemsLoading || accountsLoading;
+  const isLoading = leadsLoading || contactsLoading || dealsLoading || accountsLoading;
 
   if (isLoading) {
     return (
@@ -944,42 +927,6 @@ const UserDashboard = () => {
           </Card>
         );
 
-      case "actionItems":
-        return (
-          <Card className="h-full animate-fade-in overflow-hidden flex flex-col">
-            <CardHeader className="flex flex-row items-center justify-between py-2 px-3 flex-shrink-0">
-              <CardTitle className="text-sm font-medium truncate">Action Items</CardTitle>
-              <Clock className="w-4 h-4 text-orange-600 flex-shrink-0" />
-            </CardHeader>
-            <CardContent className="px-3 pb-3 pt-0 flex-1 min-h-0 flex flex-col gap-1.5">
-              <div className="flex items-center justify-between flex-shrink-0">
-                <span className="text-base font-bold leading-tight">{actionItemsData?.total || 0}</span>
-                <div className="flex gap-1 text-[9px]">
-                  {(actionItemsData?.overdue || 0) > 0 && (
-                    <span className="px-1.5 py-0.5 rounded bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300 font-medium">
-                      {actionItemsData?.overdue} overdue
-                    </span>
-                  )}
-                  {(actionItemsData?.dueToday || 0) > 0 && (
-                    <span className="px-1.5 py-0.5 rounded bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300">
-                      {actionItemsData?.dueToday} today
-                    </span>
-                  )}
-                </div>
-              </div>
-              {actionItemsData?.topItems && actionItemsData.topItems.length > 0 && (
-                <div className="flex-1 min-h-0 overflow-hidden space-y-0.5">
-                  {actionItemsData.topItems.slice(0, 2).map((item: any) => (
-                    <div key={item.id} className="text-[9px] p-1.5 rounded bg-muted/50 truncate">
-                      {item.next_action}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        );
-
       case "quickActions":
         return (
           <Card className="h-full animate-fade-in overflow-hidden flex flex-col">
@@ -1000,25 +947,6 @@ const UserDashboard = () => {
                 <Button variant="outline" size="sm" className="justify-start gap-1.5 h-auto min-h-[28px] text-xs py-1" onClick={() => !isResizeMode && setCreateMeetingModalOpen(true)}>
                   <Plus className="w-3 h-3 flex-shrink-0" /> Meeting
                 </Button>
-              </div>
-            </CardContent>
-          </Card>
-        );
-
-      case "myPipeline":
-        return (
-          <Card className="h-full hover:shadow-lg transition-shadow cursor-pointer animate-fade-in overflow-hidden flex flex-col" onClick={() => !isResizeMode && navigate('/deals')}>
-            <CardHeader className="flex flex-row items-center justify-between py-2 px-3 flex-shrink-0">
-              <CardTitle className="text-sm font-medium truncate">My Pipeline</CardTitle>
-              <TrendingUp className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-            </CardHeader>
-            <CardContent className="px-3 pb-3 pt-0 flex-1 min-h-0 flex flex-col justify-center gap-1">
-              <div className="text-base font-bold leading-tight">{formatCurrency(dealsData?.totalPipeline || 0)}</div>
-              <div className="flex items-center justify-between text-[9px]">
-                <span className="text-muted-foreground">{dealsData?.active || 0} active deals</span>
-              </div>
-              <div className="flex items-center gap-2 text-[9px]">
-                <span className="text-green-600 font-medium">Won: {formatCurrency(dealsData?.wonValue || 0)}</span>
               </div>
             </CardContent>
           </Card>
