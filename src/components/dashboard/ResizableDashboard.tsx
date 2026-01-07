@@ -44,8 +44,20 @@ export const ResizableDashboard = ({
   renderWidget,
   containerWidth,
 }: ResizableDashboardProps) => {
-  // Ensure container width is always valid
-  const effectiveWidth = Math.max(320, containerWidth || 1200);
+  // Don't render with invalid width - show skeleton fallback
+  if (!containerWidth || containerWidth < 320) {
+    return (
+      <div className="dashboard-grid w-full">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {visibleWidgets.slice(0, 8).map((key) => (
+            <div key={key} className="h-32 rounded-lg skeleton-shimmer" />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  const effectiveWidth = Math.max(320, containerWidth);
 
   const layout: Layout = useMemo(() => {
     const defaults = new Map<WidgetKey, WidgetLayout>();
@@ -203,8 +215,7 @@ export const ResizableDashboard = ({
         .dashboard-grid {
           width: 100%;
           box-sizing: border-box;
-          overflow-x: hidden;
-          overflow-y: visible;
+          overflow: visible;
         }
         .dashboard-grid .layout {
           width: 100% !important;
@@ -216,7 +227,7 @@ export const ResizableDashboard = ({
         }
         .dashboard-grid .react-grid-item {
           max-width: 100%;
-          overflow: hidden;
+          overflow: visible;
         }
 
         .dash-item {

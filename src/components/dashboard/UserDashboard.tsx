@@ -27,6 +27,27 @@ import { AccountModal } from "@/components/AccountModal";
 import { useTasks } from "@/hooks/useTasks";
 import { Task } from "@/types/task";
 import { EmptyState } from "@/components/shared/EmptyState";
+import { GlobalSearch } from "@/components/shared/GlobalSearch";
+import { WidgetLoadingSkeleton } from "./widgets/WidgetLoadingSkeleton";
+import { DailyTasksPopup } from "./DailyTasksPopup";
+
+// Static color mappings to avoid dynamic Tailwind class issues
+const COLOR_CLASSES = {
+  blue: { bg: 'bg-blue-50 dark:bg-blue-950/20', hover: 'hover:bg-blue-100 dark:hover:bg-blue-950/40', text: 'text-blue-600' },
+  green: { bg: 'bg-green-50 dark:bg-green-950/20', hover: 'hover:bg-green-100 dark:hover:bg-green-950/40', text: 'text-green-600' },
+  cyan: { bg: 'bg-cyan-50 dark:bg-cyan-950/20', hover: 'hover:bg-cyan-100 dark:hover:bg-cyan-950/40', text: 'text-cyan-600' },
+  purple: { bg: 'bg-purple-50 dark:bg-purple-950/20', hover: 'hover:bg-purple-100 dark:hover:bg-purple-950/40', text: 'text-purple-600' },
+  indigo: { bg: 'bg-indigo-50 dark:bg-indigo-950/20', hover: 'hover:bg-indigo-100 dark:hover:bg-indigo-950/40', text: 'text-indigo-600' },
+  emerald: { bg: 'bg-emerald-50 dark:bg-emerald-950/20', hover: 'hover:bg-emerald-100 dark:hover:bg-emerald-950/40', text: 'text-emerald-600' },
+  yellow: { bg: 'bg-yellow-50 dark:bg-yellow-950/20', hover: 'hover:bg-yellow-100 dark:hover:bg-yellow-950/40', text: 'text-yellow-600' },
+  red: { bg: 'bg-red-50 dark:bg-red-950/20', hover: 'hover:bg-red-100 dark:hover:bg-red-950/40', text: 'text-red-600' },
+  gray: { bg: 'bg-gray-50 dark:bg-gray-950/20', hover: 'hover:bg-gray-100 dark:hover:bg-gray-950/40', text: 'text-gray-600' },
+} as const;
+
+// Default query options for staleTime
+const QUERY_OPTIONS = {
+  staleTime: 30000, // 30 seconds
+};
 
 const GRID_COLS = 12;
 
@@ -91,7 +112,10 @@ const UserDashboard = ({ hideHeader = false }: UserDashboardProps) => {
   const queryClient = useQueryClient();
   const [isResizeMode, setIsResizeMode] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
-  const [containerWidth, setContainerWidth] = useState(1200);
+  // Initialize with a reasonable default based on window width minus sidebar
+  const [containerWidth, setContainerWidth] = useState(() => {
+    return typeof window !== 'undefined' ? Math.max(320, window.innerWidth - 280) : 800;
+  });
   
   const [pendingWidgetChanges, setPendingWidgetChanges] = useState<Set<WidgetKey>>(new Set());
   const [originalState, setOriginalState] = useState<{
@@ -113,29 +137,50 @@ const UserDashboard = ({ hideHeader = false }: UserDashboardProps) => {
   const { createTask, updateTask } = useTasks();
 
   useEffect(() => {
-    const updateWidth = () => {
+    const updateWidth = (): boolean => {
       if (containerRef.current) {
-        // Get computed styles to account for padding
         const styles = getComputedStyle(containerRef.current);
         const paddingLeft = parseFloat(styles.paddingLeft) || 0;
         const paddingRight = parseFloat(styles.paddingRight) || 0;
-        // Use inner width (excluding padding) for accurate grid sizing
         const width = containerRef.current.clientWidth - paddingLeft - paddingRight;
-        setContainerWidth(Math.max(320, width));
+        if (width > 0) {
+          setContainerWidth(Math.max(320, width));
+          return true;
+        }
       }
+      return false;
     };
     
-    // ResizeObserver for container size changes
-    const observer = new ResizeObserver(updateWidth);
+    // Try multiple times with increasing delays to handle slow layouts
+    const timeoutIds: NodeJS.Timeout[] = [];
+    const retryWithDelay = (attempt: number) => {
+      if (attempt >= 5) return;
+      const delay = attempt * 50; // 0, 50, 100, 150, 200ms
+      const id = setTimeout(() => {
+        if (!updateWidth() && attempt < 4) {
+          retryWithDelay(attempt + 1);
+        }
+      }, delay);
+      timeoutIds.push(id);
+    };
+    
+    // Initial attempt immediately
+    if (!updateWidth()) {
+      retryWithDelay(1);
+    }
+    
+    const observer = new ResizeObserver(() => {
+      updateWidth();
+    });
+    
     if (containerRef.current) {
       observer.observe(containerRef.current);
     }
     
-    // Also listen to window resize for viewport changes
     window.addEventListener('resize', updateWidth);
-    updateWidth();
     
     return () => {
+      timeoutIds.forEach(id => clearTimeout(id));
       observer.disconnect();
       window.removeEventListener('resize', updateWidth);
     };
@@ -158,6 +203,7 @@ const UserDashboard = ({ hideHeader = false }: UserDashboardProps) => {
       return name;
     },
     enabled: !!user?.id,
+    ...QUERY_OPTIONS,
   });
 
   // Fetch user preferences for currency
@@ -174,6 +220,7 @@ const UserDashboard = ({ hideHeader = false }: UserDashboardProps) => {
       return data;
     },
     enabled: !!user?.id,
+    ...QUERY_OPTIONS,
   });
 
   const { data: dashboardPrefs } = useQuery({
@@ -429,7 +476,8 @@ const UserDashboard = ({ hideHeader = false }: UserDashboardProps) => {
         recentLead: recentLead?.lead_name || null
       };
     },
-    enabled: !!user?.id
+    enabled: !!user?.id,
+    ...QUERY_OPTIONS,
   });
 
   // Contacts data - enhanced with contact_source
@@ -447,7 +495,8 @@ const UserDashboard = ({ hideHeader = false }: UserDashboardProps) => {
       };
       return { total: contacts.length, bySource };
     },
-    enabled: !!user?.id
+    enabled: !!user?.id,
+    ...QUERY_OPTIONS,
   });
 
   // Deals data - enhanced with stages RFQ, Offered, Won, Lost
@@ -477,14 +526,15 @@ const UserDashboard = ({ hideHeader = false }: UserDashboardProps) => {
         }
       };
     },
-    enabled: !!user?.id
+    enabled: !!user?.id,
+    ...QUERY_OPTIONS,
   });
 
   // Accounts data - enhanced with status counts
   const { data: accountsData, isLoading: accountsLoading } = useQuery({
     queryKey: ['user-accounts-enhanced', user?.id],
     queryFn: async () => {
-      const { data, error } = await supabase.from('accounts').select('id, company_name, segment, status, created_at, total_revenue').eq('created_by', user?.id);
+      const { data, error } = await supabase.from('accounts').select('id, company_name, status, created_at').eq('created_by', user?.id);
       if (error) throw error;
       const accounts = data || [];
       const byStatus = {
@@ -495,7 +545,8 @@ const UserDashboard = ({ hideHeader = false }: UserDashboardProps) => {
       };
       return { total: accounts.length, byStatus };
     },
-    enabled: !!user?.id
+    enabled: !!user?.id,
+    ...QUERY_OPTIONS,
   });
 
   // Upcoming meetings - enhanced with status counts using getMeetingStatus for consistency
@@ -530,7 +581,8 @@ const UserDashboard = ({ hideHeader = false }: UserDashboardProps) => {
         }));
       return { meetings: upcoming, total: meetings.length, byStatus };
     },
-    enabled: !!user?.id
+    enabled: !!user?.id,
+    ...QUERY_OPTIONS,
   });
 
   // Today's meetings for agenda
@@ -613,7 +665,8 @@ const UserDashboard = ({ hideHeader = false }: UserDashboardProps) => {
       const highPriority = tasks.filter(t => t.priority === 'high' && ['open', 'in_progress'].includes(t.status)).length;
       return { tasks: tasks.slice(0, 5), overdue, dueToday, highPriority, total: tasks.length, byStatus };
     },
-    enabled: !!user?.id
+    enabled: !!user?.id,
+    ...QUERY_OPTIONS,
   });
 
   // Email stats - enhanced
@@ -635,7 +688,8 @@ const UserDashboard = ({ hideHeader = false }: UserDashboardProps) => {
       const recentEmail = emails[0];
       return { sent, opened, clicked, openRate, clickRate, recentSubject: recentEmail?.subject || null };
     },
-    enabled: !!user?.id
+    enabled: !!user?.id,
+    ...QUERY_OPTIONS,
   });
 
   // Follow-ups due
@@ -655,7 +709,8 @@ const UserDashboard = ({ hideHeader = false }: UserDashboardProps) => {
       const overdue = followUps.filter(f => f.due_date && f.due_date < today).length;
       return { followUps, total: followUps.length, overdue };
     },
-    enabled: !!user?.id
+    enabled: !!user?.id,
+    ...QUERY_OPTIONS,
   });
 
   // Weekly summary view mode state
@@ -663,6 +718,9 @@ const UserDashboard = ({ hideHeader = false }: UserDashboardProps) => {
   
   // Recent activities toggle state (for admin only)
   const [showAllActivities, setShowAllActivities] = useState(false);
+  
+  // Recent activities display count (for "Show More" functionality)
+  const [activitiesDisplayCount, setActivitiesDisplayCount] = useState(5);
 
   // Weekly summary with comparison data
   const { data: weeklySummary } = useQuery({
@@ -739,8 +797,9 @@ const UserDashboard = ({ hideHeader = false }: UserDashboardProps) => {
           meetings: meetingsAllTime.count || 0,
           tasks: tasksAllTime.count || 0,
         },
-        weekStart,
-        weekEnd,
+        // Store as ISO strings to survive cache persistence
+        weekStartStr: weekStart.toISOString(),
+        weekEndStr: weekEnd.toISOString(),
       };
     },
     enabled: !!user?.id
@@ -859,8 +918,9 @@ const UserDashboard = ({ hideHeader = false }: UserDashboardProps) => {
   const renderWidget = (key: WidgetKey) => {
     switch (key) {
       case "leads":
+        if (leadsLoading) return <WidgetLoadingSkeleton showHeader rows={4} />;
         return (
-          <Card className="h-full hover:shadow-lg transition-shadow animate-fade-in overflow-hidden flex flex-col">
+          <Card className="h-full hover:shadow-lg transition-shadow animate-fade-in overflow-hidden flex flex-col" aria-label="My Leads widget">
             <CardHeader className="flex flex-row items-center justify-between py-2 px-3 flex-shrink-0">
               <CardTitle 
                 className="text-sm font-medium truncate cursor-pointer hover:text-primary transition-colors"
@@ -908,8 +968,9 @@ const UserDashboard = ({ hideHeader = false }: UserDashboardProps) => {
         );
 
       case "contacts":
+        if (contactsLoading) return <WidgetLoadingSkeleton showHeader rows={4} />;
         return (
-          <Card className="h-full hover:shadow-lg transition-shadow animate-fade-in overflow-hidden flex flex-col">
+          <Card className="h-full hover:shadow-lg transition-shadow animate-fade-in overflow-hidden flex flex-col" aria-label="My Contacts widget">
             <CardHeader className="flex flex-row items-center justify-between py-2 px-3 flex-shrink-0">
               <CardTitle 
                 className="text-sm font-medium truncate cursor-pointer hover:text-primary transition-colors"
@@ -957,8 +1018,9 @@ const UserDashboard = ({ hideHeader = false }: UserDashboardProps) => {
         );
 
       case "deals":
+        if (dealsLoading) return <WidgetLoadingSkeleton showHeader rows={4} />;
         return (
-          <Card className="h-full hover:shadow-lg transition-shadow animate-fade-in overflow-hidden flex flex-col">
+          <Card className="h-full hover:shadow-lg transition-shadow animate-fade-in overflow-hidden flex flex-col" aria-label="My Deals widget">
             <CardHeader className="flex flex-row items-center justify-between py-2 px-3 flex-shrink-0">
               <CardTitle 
                 className="text-sm font-medium truncate cursor-pointer hover:text-primary transition-colors"
@@ -1006,8 +1068,9 @@ const UserDashboard = ({ hideHeader = false }: UserDashboardProps) => {
         );
 
       case "accountsSummary":
+        if (accountsLoading) return <WidgetLoadingSkeleton showHeader rows={4} />;
         return (
-          <Card className="h-full hover:shadow-lg transition-shadow animate-fade-in overflow-hidden flex flex-col">
+          <Card className="h-full hover:shadow-lg transition-shadow animate-fade-in overflow-hidden flex flex-col" aria-label="My Accounts widget">
             <CardHeader className="flex flex-row items-center justify-between py-2 px-3 flex-shrink-0">
               <CardTitle 
                 className="text-sm font-medium truncate cursor-pointer hover:text-primary transition-colors"
@@ -1056,7 +1119,7 @@ const UserDashboard = ({ hideHeader = false }: UserDashboardProps) => {
 
       case "quickActions":
         return (
-          <Card className="h-full animate-fade-in overflow-hidden flex flex-col">
+          <Card className="h-full animate-fade-in overflow-hidden flex flex-col" aria-label="Quick Actions widget">
             <CardHeader className="py-2 px-3 flex-shrink-0">
               <CardTitle className="text-sm font-medium truncate">Quick Actions</CardTitle>
             </CardHeader>
@@ -1073,6 +1136,9 @@ const UserDashboard = ({ hideHeader = false }: UserDashboardProps) => {
                 </Button>
                 <Button variant="outline" size="sm" className="justify-start gap-1.5 h-auto min-h-[28px] text-xs py-1" onClick={() => !isResizeMode && setCreateMeetingModalOpen(true)}>
                   <Plus className="w-3 h-3 flex-shrink-0" /> Meeting
+                </Button>
+                <Button variant="outline" size="sm" className="justify-start gap-1.5 h-auto min-h-[28px] text-xs py-1 col-span-2" onClick={() => { if (!isResizeMode) { setSelectedTask(null); setTaskModalOpen(true); }}}>
+                  <Plus className="w-3 h-3 flex-shrink-0" /> Task
                 </Button>
               </div>
             </CardContent>
@@ -1227,8 +1293,9 @@ const UserDashboard = ({ hideHeader = false }: UserDashboardProps) => {
         );
 
       case "upcomingMeetings":
+        if (meetingsLoading) return <WidgetLoadingSkeleton showHeader rows={4} />;
         return (
-          <Card className="h-full hover:shadow-lg transition-shadow animate-fade-in overflow-hidden flex flex-col">
+          <Card className="h-full hover:shadow-lg transition-shadow animate-fade-in overflow-hidden flex flex-col" aria-label="My Meetings widget">
             <CardHeader className="flex flex-row items-center justify-between py-2 px-3 flex-shrink-0">
               <CardTitle 
                 className="text-sm font-medium truncate cursor-pointer hover:text-primary transition-colors"
@@ -1276,8 +1343,9 @@ const UserDashboard = ({ hideHeader = false }: UserDashboardProps) => {
         );
 
       case "taskReminders":
+        if (tasksLoading) return <WidgetLoadingSkeleton showHeader rows={4} />;
         return (
-          <Card className="h-full hover:shadow-lg transition-shadow animate-fade-in overflow-hidden flex flex-col">
+          <Card className="h-full hover:shadow-lg transition-shadow animate-fade-in overflow-hidden flex flex-col" aria-label="My Tasks widget">
             <CardHeader className="flex flex-row items-center justify-between py-2 px-3 flex-shrink-0">
               <CardTitle 
                 className="text-sm font-medium truncate cursor-pointer hover:text-primary transition-colors"
@@ -1417,66 +1485,79 @@ const UserDashboard = ({ hideHeader = false }: UserDashboardProps) => {
             </CardHeader>
             <CardContent className="px-3 pb-3 pt-0 flex-1 min-h-0 flex flex-col">
               {recentActivities && recentActivities.length > 0 ? (
-                <ScrollArea className="flex-1 min-h-0">
-                  <div className="space-y-2 pr-2">
-                    {recentActivities.slice(0, 8).map((activity) => {
-                      const badge = getActivityBadge(activity.activity_type);
-                      const isOwnActivity = activity.user_id === user?.id;
-                      return (
-                        <div 
-                          key={activity.id} 
-                          className="flex gap-3 p-2.5 rounded-lg bg-muted/40 hover:bg-muted hover:shadow-sm cursor-pointer transition-all"
-                          onClick={() => navigateToEntity(activity.resource_type)}
-                        >
-                          {/* Left: Icon */}
-                          <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${getIconBgColor(activity.activity_type, activity.resource_type)}`}>
-                            {getActivityIcon(activity.activity_type, activity.resource_type)}
-                          </div>
-                          
-                          {/* Right: Content */}
-                          <div className="flex-1 min-w-0">
-                            {/* Top row: Badge + Resource + Timestamp */}
-                            <div className="flex items-center justify-between gap-2 mb-0.5">
-                              <div className="flex items-center gap-1.5 min-w-0 flex-1">
-                                <span className="text-[10px] text-muted-foreground capitalize font-medium truncate">
-                                  {activity.resource_type}
-                                </span>
-                              </div>
-                              <span className={`text-[9px] px-1.5 py-0.5 rounded font-medium flex-shrink-0 ${badge.class}`}>
-                                {badge.text}
-                              </span>
-                              <TooltipProvider delayDuration={100}>
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <span className="text-[9px] text-muted-foreground whitespace-nowrap flex-shrink-0">
-                                      {formatRelativeTime(activity.activity_date)}
-                                    </span>
-                                  </TooltipTrigger>
-                                  <TooltipContent side="left" className="text-xs">
-                                    {format(new Date(activity.activity_date), 'MMM d, yyyy HH:mm')}
-                                  </TooltipContent>
-                                </Tooltip>
-                              </TooltipProvider>
+                <>
+                  <ScrollArea className="flex-1 min-h-0">
+                    <div className="space-y-2 pr-2">
+                      {recentActivities.slice(0, activitiesDisplayCount).map((activity) => {
+                        const badge = getActivityBadge(activity.activity_type);
+                        const isOwnActivity = activity.user_id === user?.id;
+                        return (
+                          <div 
+                            key={activity.id} 
+                            className="flex gap-3 p-2.5 rounded-lg bg-muted/40 hover:bg-muted hover:shadow-sm cursor-pointer transition-all"
+                            onClick={() => navigateToEntity(activity.resource_type)}
+                            aria-label={`${activity.activity_type} ${activity.resource_type}`}
+                          >
+                            {/* Left: Icon */}
+                            <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${getIconBgColor(activity.activity_type, activity.resource_type)}`}>
+                              {getActivityIcon(activity.activity_type, activity.resource_type)}
                             </div>
                             
-                            {/* User name (All Activities mode only, for non-self activities) */}
-                            {showAllActivities && !isOwnActivity && (
-                              <p className="text-[9px] text-muted-foreground mb-0.5 flex items-center gap-1">
-                                <User className="w-2.5 h-2.5" />
-                                {getActivityUserName(activity.user_id)}
+                            {/* Right: Content */}
+                            <div className="flex-1 min-w-0">
+                              {/* Top row: Badge + Resource + Timestamp */}
+                              <div className="flex items-center justify-between gap-2 mb-0.5">
+                                <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                                  <span className="text-[10px] text-muted-foreground capitalize font-medium truncate">
+                                    {activity.resource_type}
+                                  </span>
+                                </div>
+                                <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium flex-shrink-0 ${badge.class}`}>
+                                  {badge.text}
+                                </span>
+                                <TooltipProvider delayDuration={100}>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <span className="text-[10px] text-muted-foreground whitespace-nowrap flex-shrink-0">
+                                        {formatRelativeTime(activity.activity_date)}
+                                      </span>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="left" className="text-xs">
+                                      {format(new Date(activity.activity_date), 'MMM d, yyyy HH:mm')}
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                              </div>
+                              
+                              {/* User name (All Activities mode only, for non-self activities) */}
+                              {showAllActivities && !isOwnActivity && (
+                                <p className="text-[10px] text-muted-foreground mb-0.5 flex items-center gap-1">
+                                  <User className="w-2.5 h-2.5" />
+                                  {getActivityUserName(activity.user_id)}
+                                </p>
+                              )}
+                              
+                              {/* Description */}
+                              <p className="text-[11px] font-medium line-clamp-2 leading-snug">
+                                {activity.subject}
                               </p>
-                            )}
-                            
-                            {/* Description */}
-                            <p className="text-[11px] font-medium line-clamp-2 leading-snug">
-                              {activity.subject}
-                            </p>
+                            </div>
                           </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </ScrollArea>
+                        );
+                      })}
+                    </div>
+                  </ScrollArea>
+                  {recentActivities.length > activitiesDisplayCount && (
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      className="mt-2 h-6 text-xs w-full"
+                      onClick={() => setActivitiesDisplayCount(prev => Math.min(prev + 5, recentActivities.length))}
+                    >
+                      Show More ({recentActivities.length - activitiesDisplayCount} remaining)
+                    </Button>
+                  )}
+                </>
               ) : (
                 <div className="flex-1 min-h-0 flex items-center justify-center">
                   <EmptyState
@@ -1527,8 +1608,9 @@ const UserDashboard = ({ hideHeader = false }: UserDashboardProps) => {
         );
 
       case "weeklySummary":
-        const summaryWeekStart = weeklySummary?.weekStart || startOfWeek(new Date(), { weekStartsOn: 1 });
-        const summaryWeekEnd = weeklySummary?.weekEnd || endOfWeek(new Date(), { weekStartsOn: 1 });
+        // Parse dates from ISO strings (cache-safe) or use fresh dates as fallback
+        const summaryWeekStart = weeklySummary?.weekStartStr ? new Date(weeklySummary.weekStartStr) : startOfWeek(new Date(), { weekStartsOn: 1 });
+        const summaryWeekEnd = weeklySummary?.weekEndStr ? new Date(weeklySummary.weekEndStr) : endOfWeek(new Date(), { weekStartsOn: 1 });
         const currentData = weeklySummaryView === 'thisWeek' ? weeklySummary?.thisWeek : weeklySummary?.allTime;
         const lastWeekData = weeklySummary?.lastWeek;
         const allZeros = weeklySummaryView === 'thisWeek' && 
@@ -1619,16 +1701,18 @@ const UserDashboard = ({ hideHeader = false }: UserDashboardProps) => {
                   {summaryItems.map((item) => {
                     const trend = getTrendIndicator(item.value, item.lastWeek);
                     const TrendIcon = trend?.icon;
+                    const colorClasses = COLOR_CLASSES[item.color as keyof typeof COLOR_CLASSES] || COLOR_CLASSES.blue;
                     return (
                       <TooltipProvider key={item.key} delayDuration={100}>
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <div 
-                              className={`p-1.5 rounded bg-${item.color}-50 dark:bg-${item.color}-950/20 flex flex-col items-center justify-center cursor-pointer hover:bg-${item.color}-100 dark:hover:bg-${item.color}-950/40 transition-colors relative`}
+                              className={`p-1.5 rounded ${colorClasses.bg} flex flex-col items-center justify-center cursor-pointer ${colorClasses.hover} transition-colors relative`}
                               onClick={() => !isResizeMode && navigate(item.nav)}
+                              aria-label={`${item.label}: ${item.value}`}
                             >
-                              <p className={`text-sm font-bold text-${item.color}-600 leading-tight`}>{item.value}</p>
-                              <p className="text-[8px] text-muted-foreground leading-tight">{item.label}</p>
+                              <p className={`text-sm font-bold ${colorClasses.text} leading-tight`}>{item.value}</p>
+                              <p className="text-[10px] text-muted-foreground leading-tight">{item.label}</p>
                               {TrendIcon && weeklySummaryView === 'thisWeek' && (
                                 <div className={`absolute -top-0.5 -right-0.5 flex items-center ${trend.color}`}>
                                   <TrendIcon className="w-2.5 h-2.5" />
@@ -1747,9 +1831,15 @@ const UserDashboard = ({ hideHeader = false }: UserDashboardProps) => {
   };
 
   return (
-    <div className="px-2 sm:px-4 py-4 space-y-4 w-full overflow-x-hidden" ref={containerRef}>
-      {/* Customize Controls - shown at top when hideHeader is true, otherwise part of header */}
-      <div className="flex items-center justify-end flex-wrap gap-2">
+    <div className="flex flex-col h-full overflow-hidden">
+      {/* Search bar header - stays fixed at top, never scrolls */}
+      <div className="flex-shrink-0 px-2 sm:px-4 py-3 bg-background flex items-center justify-between flex-wrap gap-4">
+        {/* Global Search - Left Side */}
+        <div className="flex-1 max-w-md">
+          <GlobalSearch />
+        </div>
+        
+        {/* Customize Controls - Right Side */}
         <div className="flex gap-2 flex-shrink-0 items-center">
           {isResizeMode ? (
             <>
@@ -1816,19 +1906,21 @@ const UserDashboard = ({ hideHeader = false }: UserDashboardProps) => {
         </div>
       </div>
 
-      {/* Resizable Grid Layout */}
-      <ResizableDashboard
-        isResizeMode={isResizeMode}
-        visibleWidgets={visibleWidgets}
-        widgetLayouts={widgetLayouts}
-        pendingWidgetChanges={pendingWidgetChanges}
-        onLayoutChange={handleLayoutChange}
-        onWidgetRemove={handleWidgetRemove}
-        renderWidget={renderWidget}
-        containerWidth={containerWidth}
-      />
+      {/* Scrollable widgets area - only this part scrolls */}
+      <div className="flex-1 overflow-auto px-2 sm:px-4 py-4" ref={containerRef}>
+        <ResizableDashboard
+          isResizeMode={isResizeMode}
+          visibleWidgets={visibleWidgets}
+          widgetLayouts={widgetLayouts}
+          pendingWidgetChanges={pendingWidgetChanges}
+          onLayoutChange={handleLayoutChange}
+          onWidgetRemove={handleWidgetRemove}
+          renderWidget={renderWidget}
+          containerWidth={containerWidth}
+        />
+      </div>
       
-      {/* Modals */}
+      {/* Modals - outside scrollable area */}
       <TaskModal
         open={taskModalOpen}
         onOpenChange={(open) => { setTaskModalOpen(open); if (!open) setSelectedTask(null); }}
@@ -1893,6 +1985,14 @@ const UserDashboard = ({ hideHeader = false }: UserDashboardProps) => {
           queryClient.invalidateQueries({ queryKey: ['user-accounts-enhanced', user?.id] });
           setAccountModalOpen(false);
           toast.success("Account created");
+        }}
+      />
+
+      {/* Daily Tasks Popup - shows once per day */}
+      <DailyTasksPopup 
+        onViewTask={(task) => {
+          setSelectedTask(task);
+          setTaskModalOpen(true);
         }}
       />
     </div>

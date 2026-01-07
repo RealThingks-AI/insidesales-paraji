@@ -13,23 +13,30 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Search, ArrowUpDown, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, X, Eye, User, CalendarPlus } from "lucide-react";
+import { Search, ArrowUpDown, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, X, Eye, User, CalendarPlus, Pencil, CheckSquare } from "lucide-react";
 import { RowActionsDropdown, Edit, Trash2, Mail, UserPlus } from "./RowActionsDropdown";
+import { ContactDeleteConfirmDialog } from "./ContactDeleteConfirmDialog";
+import { ContactSegmentFilter } from "./ContactSegmentFilter";
 import { ContactModal } from "./ContactModal";
 import { ContactColumnCustomizer, ContactColumnConfig, defaultContactColumns } from "./ContactColumnCustomizer";
 import { ContactDetailModal } from "./contacts/ContactDetailModal";
-import { AccountViewModal } from "./AccountViewModal";
+import { AccountDetailModalById } from "./accounts/AccountDetailModalById";
 import { SendEmailModal } from "./SendEmailModal";
 import { MeetingModal } from "./MeetingModal";
+import { TaskModal } from "./tasks/TaskModal";
+import { ConvertContactToLeadModal } from "./contacts/ConvertContactToLeadModal";
+import { MergeRecordsModal } from "./shared/MergeRecordsModal";
 import { HighlightedText } from "./shared/HighlightedText";
 import { ClearFiltersButton } from "./shared/ClearFiltersButton";
 import { TableSkeleton } from "./shared/Skeletons";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { useQuery } from "@tanstack/react-query";
+import { useTasks } from "@/hooks/useTasks";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { moveFieldToEnd } from "@/utils/columnOrderUtils";
 
 // Export ref interface for parent component
 export interface ContactTableRef {
   handleBulkDelete: () => Promise<void>;
+  getSelectedContactsForEmail: () => Contact[];
 }
 
 interface Contact {
@@ -92,10 +99,9 @@ export const ContactTable = forwardRef<ContactTableRef, ContactTableProps>(({
 }, ref) => {
   const { toast } = useToast();
   const { logDelete, logBulkDelete } = useCRUDAudit();
-  const [searchParams] = useSearchParams();
-  const [contacts, setContacts] = useState<Contact[]>([]);
+  const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [filteredContacts, setFilteredContacts] = useState<Contact[]>([]);
-  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -129,19 +135,26 @@ export const ContactTable = forwardRef<ContactTableRef, ContactTableProps>(({
   const [segmentFilter, setSegmentFilter] = useState<string>("all");
   const [tagFilter, setTagFilter] = useState<string | null>(null);
 
-  // Fetch current user ID for "me" filtering
-  useEffect(() => {
-    const fetchCurrentUser = async () => {
+  // Use cached auth instead of fetching user each time
+  const { data: authData } = useQuery({
+    queryKey: ['current-user'],
+    queryFn: async () => {
       const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        setCurrentUserId(user.id);
-        if (ownerParam === 'me') {
-          setOwnerFilter(user.id);
-        }
+      return user;
+    },
+    staleTime: 10 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
+  });
+
+  // Set current user ID from cached auth
+  useEffect(() => {
+    if (authData) {
+      setCurrentUserId(authData.id);
+      if (ownerParam === 'me') {
+        setOwnerFilter(authData.id);
       }
-    };
-    fetchCurrentUser();
-  }, [ownerParam]);
+    }
+  }, [authData, ownerParam]);
 
   // Sync filters when URL changes
   useEffect(() => {
@@ -161,6 +174,9 @@ export const ContactTable = forwardRef<ContactTableRef, ContactTableProps>(({
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [contactToDelete, setContactToDelete] = useState<string | null>(null);
+  
+  // viewId effect is moved below the contacts query
+  
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(25);
   const [sortField, setSortField] = useState<string | null>(null);
@@ -174,24 +190,39 @@ export const ContactTable = forwardRef<ContactTableRef, ContactTableProps>(({
   const [emailModalOpen, setEmailModalOpen] = useState(false);
   const [meetingModalOpen, setMeetingModalOpen] = useState(false);
   const [meetingContact, setMeetingContact] = useState<Contact | null>(null);
+  const [taskModalOpen, setTaskModalOpen] = useState(false);
+  const [taskContactId, setTaskContactId] = useState<string | null>(null);
+  
+  // Convert to Lead modal states
+  const [convertModalOpen, setConvertModalOpen] = useState(false);
+  const [contactToConvert, setContactToConvert] = useState<Contact | null>(null);
+  
+  // Merge modal states
+  const [mergeModalOpen, setMergeModalOpen] = useState(false);
+  const [mergeSourceId, setMergeSourceId] = useState<string>("");
+  const [mergeTargetId, setMergeTargetId] = useState<string>("");
 
-  // Expose handleBulkDelete to parent via ref
-  useImperativeHandle(ref, () => ({
-    handleBulkDelete
-  }), [selectedContacts, contacts]);
+  const { createTask } = useTasks();
 
-  // Fetch all profiles for owner dropdown
+  const handleCreateTask = (contact: Contact) => {
+    setTaskContactId(contact.id);
+    setTaskModalOpen(true);
+  };
+
+  // Fetch all profiles for owner dropdown with caching
   const { data: allProfiles = [] } = useQuery({
     queryKey: ['all-profiles'],
     queryFn: async () => {
       const { data } = await supabase.from('profiles').select('id, full_name');
       return data || [];
     },
+    staleTime: 10 * 60 * 1000, // 10 minutes
   });
 
-  const fetchContacts = async () => {
-    try {
-      setLoading(true);
+  // Fetch contacts with React Query caching
+  const { data: contacts = [], isLoading: loading, refetch: refetchContacts } = useQuery({
+    queryKey: ['contacts'],
+    queryFn: async () => {
       const { data, error } = await supabase
         .from('contacts')
         .select(`
@@ -207,28 +238,46 @@ export const ContactTable = forwardRef<ContactTableRef, ContactTableProps>(({
       if (error) throw error;
 
       // Transform data to include account fields
-      const transformedData = (data || []).map(contact => ({
+      return (data || []).map(contact => ({
         ...contact,
         account_company_name: contact.accounts?.company_name || contact.company_name || null,
         account_industry: contact.accounts?.industry,
         account_region: contact.accounts?.region,
-      }));
+      })) as Contact[];
+    },
+    staleTime: 2 * 60 * 1000, // 2 minutes
+  });
 
-      setContacts(transformedData);
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to fetch contacts. Please refresh the page.",
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
-    }
+  const fetchContacts = () => {
+    refetchContacts();
   };
 
+  // Handle viewId from URL (from global search)
+  const viewId = searchParams.get('viewId');
   useEffect(() => {
-    fetchContacts();
-  }, []);
+    if (viewId && contacts.length > 0) {
+      const contactToView = contacts.find(c => c.id === viewId);
+      if (contactToView) {
+        setViewingContact(contactToView);
+        setShowDetailModal(true);
+        // Clear the viewId from URL after opening
+        setSearchParams(prev => {
+          prev.delete('viewId');
+          return prev;
+        }, { replace: true });
+      }
+    }
+  }, [viewId, contacts, setSearchParams]);
+
+  // Expose methods to parent via ref
+  useImperativeHandle(ref, () => ({
+    handleBulkDelete,
+    getSelectedContactsForEmail: () => {
+      return contacts.filter(
+        contact => selectedContacts.includes(contact.id) && contact.email
+      );
+    }
+  }), [selectedContacts, contacts]);
 
   useEffect(() => {
     if (refreshTrigger && refreshTrigger > 0) {
@@ -305,10 +354,7 @@ export const ContactTable = forwardRef<ContactTableRef, ContactTableProps>(({
   };
 
   const getSortIcon = (field: string) => {
-    if (sortField !== field) {
-      return <ArrowUpDown className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity" />;
-    }
-    return sortDirection === 'asc' ? <ArrowUp className="w-4 h-4" /> : <ArrowDown className="w-4 h-4" />;
+    return null; // Hide sort icons but keep sorting on click
   };
 
   const handleDelete = async (id: string) => {
@@ -373,46 +419,19 @@ export const ContactTable = forwardRef<ContactTableRef, ContactTableProps>(({
     }
   };
 
-  const handleConvertToLead = async (contact: Contact) => {
-    try {
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
-      if (userError || !user) throw new Error('User not authenticated');
+  const handleConvertToLead = (contact: Contact) => {
+    setContactToConvert(contact);
+    setConvertModalOpen(true);
+  };
 
-      const leadData: any = {
-        lead_name: contact.contact_name,
-        created_by: user.id,
-        created_time: new Date().toISOString(),
-        modified_time: new Date().toISOString()
-      };
-
-      if (contact.company_name) leadData.company_name = contact.company_name;
-      if (contact.position) leadData.position = contact.position;
-      if (contact.email) leadData.email = contact.email;
-      if (contact.phone_no) leadData.phone_no = contact.phone_no;
-      if (contact.linkedin) leadData.linkedin = contact.linkedin;
-      if (contact.website) leadData.website = contact.website;
-      if (contact.contact_source) leadData.contact_source = contact.contact_source;
-      if (contact.industry) leadData.industry = contact.industry;
-      if (contact.region) leadData.country = contact.region;
-      if (contact.description) leadData.description = contact.description;
-      if (contact.contact_owner) leadData.contact_owner = contact.contact_owner;
-
-      const { error } = await supabase.from('leads').insert([leadData]).select().single();
-      if (error) throw error;
-
-      toast({
-        title: "Success",
-        description: `Contact "${contact.contact_name}" has been converted to a lead.`
-      });
-
-      fetchContacts();
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to convert contact to lead.",
-        variant: "destructive"
-      });
-    }
+  const handleMergeLeads = (contactId: string, leadId: string) => {
+    // For now, we'll just show a toast - full merge functionality would require more complex handling
+    // since we're merging contact -> lead (different entities)
+    toast({
+      title: "Merge Feature",
+      description: "Contact-to-Lead merge functionality will open the lead for review.",
+    });
+    // Navigate to lead or open lead detail
   };
 
   const handleSelectAll = (checked: boolean) => {
@@ -442,7 +461,10 @@ export const ContactTable = forwardRef<ContactTableRef, ContactTableProps>(({
     setShowDetailModal(true);
   };
 
-  const visibleColumns = localColumns.filter(col => col.visible);
+  const visibleColumns = moveFieldToEnd(
+    localColumns.filter((col) => col.visible).sort((a, b) => a.order - b.order),
+    "contact_owner",
+  );
   const totalPages = Math.ceil(filteredContacts.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
   const pageContacts = filteredContacts.slice(startIndex, startIndex + itemsPerPage);
@@ -480,8 +502,8 @@ export const ContactTable = forwardRef<ContactTableRef, ContactTableProps>(({
   // Generate consistent color from name
   const getAvatarColor = (name: string) => {
     const colors = [
-      'bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-orange-500',
-      'bg-pink-500', 'bg-teal-500', 'bg-indigo-500', 'bg-amber-500'
+      'bg-slate-500', 'bg-slate-600', 'bg-zinc-500', 'bg-gray-500',
+      'bg-stone-500', 'bg-neutral-500', 'bg-slate-700', 'bg-zinc-600'
     ];
     const index = name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % colors.length;
     return colors[index];
@@ -499,7 +521,7 @@ export const ContactTable = forwardRef<ContactTableRef, ContactTableProps>(({
   };
 
   return (
-    <div className="space-y-3">
+    <div className="flex flex-col h-full space-y-3">
       {/* Header and Actions */}
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div className="flex items-center gap-3 flex-wrap">
@@ -546,18 +568,7 @@ export const ContactTable = forwardRef<ContactTableRef, ContactTableProps>(({
             </SelectContent>
           </Select>
 
-          <Select value={segmentFilter} onValueChange={setSegmentFilter}>
-            <SelectTrigger className="w-[140px]">
-              <SelectValue placeholder="All Segments" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Segments</SelectItem>
-              <SelectItem value="prospect">Prospect</SelectItem>
-              <SelectItem value="customer">Customer</SelectItem>
-              <SelectItem value="partner">Partner</SelectItem>
-              <SelectItem value="vendor">Vendor</SelectItem>
-            </SelectContent>
-          </Select>
+          <ContactSegmentFilter value={segmentFilter} onValueChange={setSegmentFilter} />
 
           {tagFilter && (
             <Badge variant="secondary" className="flex items-center gap-1">
@@ -588,12 +599,12 @@ export const ContactTable = forwardRef<ContactTableRef, ContactTableProps>(({
       </div>
 
       {/* Table */}
-      <Card>
-        <div className="overflow-auto">
+      <Card className="flex-1 min-h-0 flex flex-col">
+        <div className="relative overflow-auto flex-1 min-h-0">
           <Table>
-            <TableHeader className="sticky top-0 z-10">
-              <TableRow className="bg-muted/50 hover:bg-muted/60 border-b-2">
-                <TableHead className="w-12 text-center font-bold text-foreground bg-muted/50">
+            <TableHeader>
+              <TableRow className="sticky top-0 z-20 bg-muted border-b-2">
+                <TableHead className="w-12 text-center font-bold text-foreground">
                   <div className="flex justify-center">
                     <Checkbox
                       checked={selectedContacts.length > 0 && selectedContacts.length === Math.min(pageContacts.length, 50)}
@@ -604,10 +615,10 @@ export const ContactTable = forwardRef<ContactTableRef, ContactTableProps>(({
                 {visibleColumns.map(column => (
                   <TableHead
                     key={column.field}
-                    className="text-left font-bold text-foreground bg-muted/50 px-4 py-3 whitespace-nowrap"
+                    className={`font-bold text-foreground px-4 py-3 whitespace-nowrap ${column.field === 'contact_name' ? 'text-left' : 'text-center'}`}
                   >
                     <div
-                      className="group flex items-center gap-2 cursor-pointer hover:text-primary"
+                      className={`group flex items-center gap-2 cursor-pointer hover:text-primary ${column.field === 'contact_name' ? 'justify-start' : 'justify-center'}`}
                       onClick={() => handleSort(column.field)}
                     >
                       {column.label}
@@ -615,7 +626,7 @@ export const ContactTable = forwardRef<ContactTableRef, ContactTableProps>(({
                     </div>
                   </TableHead>
                 ))}
-                <TableHead className="text-center font-bold text-foreground bg-muted/50 w-32 px-4 py-3">
+                <TableHead className="text-center font-bold text-foreground w-32 px-4 py-3">
                   Actions
                 </TableHead>
               </TableRow>
@@ -645,7 +656,7 @@ export const ContactTable = forwardRef<ContactTableRef, ContactTableProps>(({
                 pageContacts.map(contact => (
                   <TableRow
                     key={contact.id}
-                    className="hover:bg-muted/20 border-b group"
+                    className={`hover:bg-muted/30 border-b group transition-colors ${selectedContacts.includes(contact.id) ? 'bg-primary/5' : ''}`}
                     data-state={selectedContacts.includes(contact.id) ? "selected" : undefined}
                   >
                     <TableCell className="text-center px-4 py-3">
@@ -659,21 +670,18 @@ export const ContactTable = forwardRef<ContactTableRef, ContactTableProps>(({
                     {visibleColumns.map(column => (
                       <TableCell
                         key={column.field}
-                        className="text-left px-4 py-3 align-middle whitespace-nowrap overflow-hidden text-ellipsis max-w-[200px]"
+                        className={`px-4 py-3 align-middle whitespace-nowrap overflow-hidden text-ellipsis max-w-[200px] ${column.field === 'contact_name' ? 'text-left' : 'text-center'}`}
                       >
                         {column.field === 'contact_name' ? (
-                          <div className="flex items-center gap-2">
-                            {/* Contact Avatar */}
-                            <div className={`w-8 h-8 rounded-full ${getAvatarColor(contact.contact_name)} flex items-center justify-center text-white text-xs font-medium shrink-0`}>
-                              {getContactInitials(contact.contact_name)}
-                            </div>
-                            <button
-                              onClick={() => handleEditContact(contact)}
-                              className="text-primary hover:underline font-medium text-left truncate"
-                            >
-                              <HighlightedText text={contact.contact_name} highlight={debouncedSearchTerm} />
-                            </button>
-                          </div>
+                          <button
+                            onClick={() => {
+                              setViewingContact(contact);
+                              setShowDetailModal(true);
+                            }}
+                            className="text-primary hover:underline font-medium text-left truncate"
+                          >
+                            <HighlightedText text={contact.contact_name} highlight={debouncedSearchTerm} />
+                          </button>
                         ) : column.field === 'company_name' || column.field === 'account_company_name' ? (
                           contact.account_company_name ? (
                             <button
@@ -694,19 +702,29 @@ export const ContactTable = forwardRef<ContactTableRef, ContactTableProps>(({
                         ) : column.field === 'email' ? (
                           <HighlightedText text={contact.email} highlight={debouncedSearchTerm} />
                         ) : column.field === 'contact_owner' ? (
-                          <span className="truncate block">
-                            {contact.contact_owner ? displayNames[contact.contact_owner] || "Loading..." : '-'}
-                          </span>
+                          contact.contact_owner ? (
+                            <span className="truncate block">
+                              {displayNames[contact.contact_owner] || "Loading..."}
+                            </span>
+                          ) : (
+                            <span className="text-center text-muted-foreground w-full block">-</span>
+                          )
                         ) : column.field === 'score' ? (
-                          <span className={`font-medium ${(contact.score || 0) >= 70 ? 'text-green-600 dark:text-green-400' : (contact.score || 0) >= 40 ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'}`}>
-                            {contact.score ?? '-'}
-                          </span>
+                          contact.score != null ? (
+                            <span className={`font-medium ${contact.score >= 70 ? 'text-green-600 dark:text-green-400' : contact.score >= 40 ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'}`}>
+                              {contact.score}
+                            </span>
+                          ) : (
+                            <span className="text-center text-muted-foreground w-full block">-</span>
+                          )
                         ) : column.field === 'segment' ? (
                           contact.segment ? (
                             <Badge variant="outline" className="text-xs">
                               {contact.segment}
                             </Badge>
-                          ) : '-'
+                          ) : (
+                            <span className="text-center text-muted-foreground w-full block">-</span>
+                          )
                         ) : column.field === 'tags' && contact.tags && contact.tags.length > 0 ? (
                           <TooltipProvider>
                             <Tooltip>
@@ -746,56 +764,62 @@ export const ContactTable = forwardRef<ContactTableRef, ContactTableProps>(({
                             </Tooltip>
                           </TooltipProvider>
                         ) : column.field === 'engagement_score' ? (
-                          <span className={`font-medium ${(contact.engagement_score || 0) >= 70 ? 'text-green-600 dark:text-green-400' : (contact.engagement_score || 0) >= 40 ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'}`}>
-                            {contact.engagement_score ?? '-'}
-                          </span>
+                          contact.engagement_score != null ? (
+                            <span className={`font-medium ${contact.engagement_score >= 70 ? 'text-green-600 dark:text-green-400' : contact.engagement_score >= 40 ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'}`}>
+                              {contact.engagement_score}
+                            </span>
+                          ) : (
+                            <span className="text-center text-muted-foreground w-full block">-</span>
+                          )
                         ) : column.field === 'email_opens' ? (
-                          <span>{contact.email_opens ?? 0}</span>
+                          <span className="text-center w-full block">{contact.email_opens ?? 0}</span>
                         ) : column.field === 'email_clicks' ? (
-                          <span>{contact.email_clicks ?? 0}</span>
-                        ) : column.field === 'last_contacted_at' && contact.last_contacted_at ? (
-                          <span className="text-sm">{new Date(contact.last_contacted_at).toLocaleDateString()}</span>
+                          <span className="text-center w-full block">{contact.email_clicks ?? 0}</span>
+                        ) : column.field === 'last_contacted_at' ? (
+                          contact.last_contacted_at ? (
+                            <span className="text-sm">{new Date(contact.last_contacted_at).toLocaleDateString()}</span>
+                          ) : (
+                            <span className="text-center text-muted-foreground w-full block">-</span>
+                          )
                         ) : column.field === 'industry' ? (
-                          <HighlightedText text={contact.industry} highlight={debouncedSearchTerm} />
+                          contact.industry ? (
+                            <HighlightedText text={contact.industry} highlight={debouncedSearchTerm} />
+                          ) : (
+                            <span className="text-center text-muted-foreground w-full block">-</span>
+                          )
                         ) : (
-                          <span className="truncate block" title={String(getDisplayValue(contact, column.field))}>
-                            {getDisplayValue(contact, column.field)}
-                          </span>
+                          getDisplayValue(contact, column.field) && getDisplayValue(contact, column.field) !== '-' ? (
+                            <span className="truncate block" title={String(getDisplayValue(contact, column.field))}>
+                              {getDisplayValue(contact, column.field)}
+                            </span>
+                          ) : (
+                            <span className="text-center text-muted-foreground w-full block">-</span>
+                          )
                         )}
                       </TableCell>
                     ))}
                     <TableCell className="w-20 px-4 py-3">
-                      <div className="flex items-center justify-center gap-1">
-                        {/* Quick view button on hover */}
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
-                          onClick={() => handleViewContact(contact)}
-                        >
-                          <Eye className="w-4 h-4" />
-                        </Button>
+                      <div className="flex items-center justify-center">
                         <RowActionsDropdown
                           actions={[
                             {
-                              label: "View Details",
+                              label: "View",
                               icon: <Eye className="w-4 h-4" />,
                               onClick: () => handleViewContact(contact)
                             },
                             {
                               label: "Edit",
-                              icon: <Edit className="w-4 h-4" />,
+                              icon: <Pencil className="w-4 h-4" />,
                               onClick: () => handleEditContact(contact)
                             },
-                            {
+                            ...(contact.email ? [{
                               label: "Send Email",
                               icon: <Mail className="w-4 h-4" />,
                               onClick: () => {
                                 setEmailContact(contact);
                                 setEmailModalOpen(true);
-                              },
-                              disabled: !contact.email
-                            },
+                              }
+                            }] : []),
                             {
                               label: "Create Meeting",
                               icon: <CalendarPlus className="w-4 h-4" />,
@@ -805,10 +829,15 @@ export const ContactTable = forwardRef<ContactTableRef, ContactTableProps>(({
                               }
                             },
                             {
+                              label: "Create Task",
+                              icon: <CheckSquare className="w-4 h-4" />,
+                              onClick: () => handleCreateTask(contact),
+                              separator: true
+                            },
+                            {
                               label: "Convert to Lead",
                               icon: <UserPlus className="w-4 h-4" />,
-                              onClick: () => handleConvertToLead(contact),
-                              separator: true
+                              onClick: () => handleConvertToLead(contact)
                             },
                             {
                               label: "Delete",
@@ -830,11 +859,9 @@ export const ContactTable = forwardRef<ContactTableRef, ContactTableProps>(({
             </TableBody>
           </Table>
         </div>
-      </Card>
-
-      {/* Pagination */}
-      {totalPages > 0 && (
-        <div className="flex items-center justify-between">
+        
+        {/* Pagination */}
+        <div className="flex items-center justify-between p-4 border-t flex-shrink-0">
           <div className="flex items-center gap-2">
             <span className="text-sm text-muted-foreground">
               Showing {filteredContacts.length === 0 ? 0 : startIndex + 1} to {Math.min(startIndex + itemsPerPage, filteredContacts.length)} of {filteredContacts.length} contacts
@@ -845,7 +872,7 @@ export const ContactTable = forwardRef<ContactTableRef, ContactTableProps>(({
               variant="outline"
               size="sm"
               onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-              disabled={currentPage === 1}
+              disabled={currentPage === 1 || totalPages === 0}
             >
               <ChevronLeft className="w-4 h-4" />
               Previous
@@ -864,7 +891,7 @@ export const ContactTable = forwardRef<ContactTableRef, ContactTableProps>(({
             </Button>
           </div>
         </div>
-      )}
+      </Card>
 
       {/* Modals */}
       <ContactModal
@@ -885,6 +912,11 @@ export const ContactTable = forwardRef<ContactTableRef, ContactTableProps>(({
         onOpenChange={setShowDetailModal}
         contact={viewingContact as any}
         onUpdate={fetchContacts}
+        onEdit={(contact) => {
+          setShowDetailModal(false);
+          setEditingContact(contact);
+          setShowModal(true);
+        }}
       />
 
       <ContactColumnCustomizer
@@ -896,32 +928,23 @@ export const ContactTable = forwardRef<ContactTableRef, ContactTableProps>(({
         isSaving={isSaving}
       />
 
-      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This action cannot be undone. This will permanently delete the contact.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => {
-                if (contactToDelete) {
-                  handleDelete(contactToDelete);
-                  setContactToDelete(null);
-                }
-              }}
-            >
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ContactDeleteConfirmDialog
+        open={showDeleteDialog}
+        onConfirm={() => {
+          if (contactToDelete) {
+            handleDelete(contactToDelete);
+            setContactToDelete(null);
+          }
+          setShowDeleteDialog(false);
+        }}
+        onCancel={() => {
+          setShowDeleteDialog(false);
+          setContactToDelete(null);
+        }}
+      />
 
       {/* Account View Modal */}
-      <AccountViewModal open={accountViewOpen} onOpenChange={setAccountViewOpen} accountId={viewAccountId} />
+      <AccountDetailModalById open={accountViewOpen} onOpenChange={setAccountViewOpen} accountId={viewAccountId} />
 
       {/* Send Email Modal */}
       <SendEmailModal
@@ -954,6 +977,36 @@ export const ContactTable = forwardRef<ContactTableRef, ContactTableProps>(({
           setMeetingContact(null);
           fetchContacts();
         }}
+      />
+
+      {/* Task Modal */}
+      <TaskModal
+        open={taskModalOpen}
+        onOpenChange={setTaskModalOpen}
+        onSubmit={createTask}
+        context={taskContactId ? { module: 'contacts', recordId: taskContactId, locked: true } : undefined}
+      />
+
+      {/* Convert to Lead Modal */}
+      <ConvertContactToLeadModal
+        open={convertModalOpen}
+        onOpenChange={setConvertModalOpen}
+        contact={contactToConvert}
+        onSuccess={() => {
+          fetchContacts();
+          setContactToConvert(null);
+        }}
+        onMergeLead={handleMergeLeads}
+      />
+
+      {/* Merge Records Modal */}
+      <MergeRecordsModal
+        open={mergeModalOpen}
+        onOpenChange={setMergeModalOpen}
+        entityType="contacts"
+        sourceId={mergeSourceId}
+        targetId={mergeTargetId}
+        onSuccess={fetchContacts}
       />
     </div>
   );

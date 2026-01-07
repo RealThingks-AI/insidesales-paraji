@@ -8,10 +8,15 @@ import { ListView } from "@/components/ListView";
 import { DealForm } from "@/components/DealForm";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, LayoutGrid, List } from "lucide-react";
+import { Plus, LayoutGrid, List, Trash2 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useCRUDAudit } from "@/hooks/useCRUDAudit";
-import { DealsSettingsDropdown } from "@/components/DealsSettingsDropdown";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Upload, Download, Columns, MoreVertical } from "lucide-react";
+import { useDealsImportExport } from "@/hooks/useDealsImportExport";
+import { DeleteConfirmDialog } from "@/components/shared/DeleteConfirmDialog";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+
 const DealsPage = () => {
   const [searchParams] = useSearchParams();
   const initialStageFilter = searchParams.get('stage') || 'all';
@@ -20,6 +25,7 @@ const DealsPage = () => {
     loading: authLoading
   } = useAuth();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const {
     toast
   } = useToast();
@@ -28,15 +34,38 @@ const DealsPage = () => {
     logUpdate,
     logBulkDelete
   } = useCRUDAudit();
-  const [deals, setDeals] = useState<Deal[]>([]);
   const [filteredDeals, setFilteredDeals] = useState<Deal[]>([]);
-  const [loading, setLoading] = useState(true);
   const [selectedDeal, setSelectedDeal] = useState<Deal | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [initialStage, setInitialStage] = useState<DealStage>('Lead');
   const [activeView, setActiveView] = useState<'kanban' | 'list'>('list');
+  const [selectedDealIds, setSelectedDealIds] = useState<string[]>([]);
+  const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false);
   const [stageFilterFromUrl, setStageFilterFromUrl] = useState(initialStageFilter);
+  
+  // Fetch deals with React Query caching
+  const { data: deals = [], isLoading: loading, refetch: refetchDeals } = useQuery({
+    queryKey: ['deals'],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('deals').select('*').order('modified_at', {
+        ascending: false
+      });
+      if (error) throw error;
+      return (data || []) as unknown as Deal[];
+    },
+    staleTime: 2 * 60 * 1000, // 2 minutes
+    enabled: !!user, // Only fetch when user is available
+  });
+
+  const fetchDeals = async () => {
+    await refetchDeals();
+  };
+  
+  // Initialize import/export hook at component level
+  const { handleImport, handleExportAll, handleExportSelected } = useDealsImportExport({
+    onRefresh: () => fetchDeals()
+  });
   
   // Get owner parameter from URL - "me" means filter by current user
   const ownerParam = searchParams.get('owner');
@@ -49,6 +78,23 @@ const DealsPage = () => {
     }
   }, [searchParams]);
 
+  // Handle viewId from URL (from global search)
+  useEffect(() => {
+    const viewId = searchParams.get('viewId');
+    if (viewId && deals.length > 0) {
+      const dealToView = deals.find(d => d.id === viewId);
+      if (dealToView) {
+        setSelectedDeal(dealToView);
+        setIsCreating(false);
+        setIsFormOpen(true);
+        // Clear the viewId from URL after opening
+        const newParams = new URLSearchParams(searchParams);
+        newParams.delete('viewId');
+        navigate(`/deals?${newParams.toString()}`, { replace: true });
+      }
+    }
+  }, [searchParams, deals, navigate]);
+
   // Filter deals by owner when owner=me
   useEffect(() => {
     if (ownerParam === 'me' && user?.id) {
@@ -57,36 +103,7 @@ const DealsPage = () => {
       setFilteredDeals(deals);
     }
   }, [deals, ownerParam, user?.id]);
-  const fetchDeals = async () => {
-    try {
-      setLoading(true);
-      const {
-        data,
-        error
-      } = await supabase.from('deals').select('*').order('modified_at', {
-        ascending: false
-      });
-      if (error) {
-        console.error('Supabase error fetching deals:', error);
-        toast({
-          title: "Error",
-          description: "Failed to fetch deals",
-          variant: "destructive"
-        });
-        return;
-      }
-      setDeals((data || []) as unknown as Deal[]);
-    } catch (error) {
-      console.error('Unexpected error fetching deals:', error);
-      toast({
-        title: "Error",
-        description: "An unexpected error occurred",
-        variant: "destructive"
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
+  // Old fetchDeals removed - using React Query now
   const handleUpdateDeal = async (dealId: string, updates: Partial<Deal>) => {
     try {
       console.log("=== HANDLE UPDATE DEAL DEBUG ===");
@@ -116,11 +133,8 @@ const DealsPage = () => {
       // Log update operation
       await logUpdate('deals', dealId, updates, existingDeal);
 
-      // Update local state
-      setDeals(prev => prev.map(deal => deal.id === dealId ? {
-        ...deal,
-        ...updateData
-      } : deal));
+      // Invalidate cache instead of setDeals
+      queryClient.invalidateQueries({ queryKey: ['deals'] });
       toast({
         title: "Success",
         description: "Deal updated successfully"
@@ -173,7 +187,8 @@ const DealsPage = () => {
 
         // Log create operation
         await logCreate('deals', data.id, dealData);
-        setDeals(prev => [data as unknown as Deal, ...prev]);
+        // Invalidate cache to refresh deals
+        queryClient.invalidateQueries({ queryKey: ['deals'] });
       } else if (selectedDeal) {
         const updateData = {
           ...dealData,
@@ -215,9 +230,9 @@ const DealsPage = () => {
       console.log("Deleted IDs:", deletedIds);
       console.log("Not deleted due to RLS/permissions:", notDeleted);
 
-      // Update local state only for deals that were actually deleted
+      // Invalidate cache to refresh deals
       if (deletedIds.length > 0) {
-        setDeals(prev => prev.filter(deal => !deletedIds.includes(deal.id)));
+        queryClient.invalidateQueries({ queryKey: ['deals'] });
 
         // Log bulk delete with only the successfully deleted IDs
         await logBulkDelete('deals', deletedIds.length, deletedIds);
@@ -281,31 +296,21 @@ const DealsPage = () => {
   }, [user, authLoading, navigate]);
   useEffect(() => {
     if (user) {
-      fetchDeals();
-
-      // Set up real-time subscription
+      // Set up real-time subscription - just invalidate cache on changes
       const channel = supabase.channel('deals-changes').on('postgres_changes', {
         event: '*',
         schema: 'public',
         table: 'deals'
       }, payload => {
         console.log('Real-time deal change:', payload);
-        if (payload.eventType === 'INSERT') {
-          setDeals(prev => [payload.new as Deal, ...prev]);
-        } else if (payload.eventType === 'UPDATE') {
-          setDeals(prev => prev.map(deal => deal.id === payload.new.id ? {
-            ...deal,
-            ...payload.new
-          } as Deal : deal));
-        } else if (payload.eventType === 'DELETE') {
-          setDeals(prev => prev.filter(deal => deal.id !== payload.old.id));
-        }
+        // Invalidate cache to refresh deals - React Query will handle the refetch
+        queryClient.invalidateQueries({ queryKey: ['deals'] });
       }).subscribe();
 
       // Listen for custom import events
       const handleImportEvent = () => {
         console.log('DealsPage: Received deals-data-updated event, refreshing...');
-        fetchDeals();
+        queryClient.invalidateQueries({ queryKey: ['deals'] });
       };
       window.addEventListener('deals-data-updated', handleImportEvent);
       return () => {
@@ -313,8 +318,11 @@ const DealsPage = () => {
         window.removeEventListener('deals-data-updated', handleImportEvent);
       };
     }
-  }, [user]);
-  if (authLoading || loading) {
+  }, [user, queryClient]);
+  // Show skeleton instead of blocking full-screen loader
+  const showSkeleton = loading && deals.length === 0;
+  
+  if (authLoading) {
     return <div className="h-screen flex items-center justify-center bg-background">
         <div className="text-center">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
@@ -325,15 +333,34 @@ const DealsPage = () => {
   if (!user) {
     return null;
   }
+  
   return <div className="h-screen flex flex-col bg-background overflow-hidden">
       {/* Fixed Header */}
       <div className="flex-shrink-0 bg-background">
         <div className="px-6 h-16 flex items-center border-b w-full">
           <div className="flex items-center justify-between w-full">
             <div className="min-w-0 flex-1">
-              <h1 className="text-2xl text-foreground font-semibold">Deals</h1>
+              <h1 className="text-xl text-foreground font-semibold">Deals</h1>
             </div>
             <div className="flex items-center gap-3">
+              {/* Bulk action icons when deals are selected */}
+              {selectedDealIds.length > 0 && (
+                <TooltipProvider>
+                  <div className="flex items-center gap-1">
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button variant="outline" size="icon" onClick={() => setShowBulkDeleteDialog(true)}>
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Delete Selected ({selectedDealIds.length})</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
+                </TooltipProvider>
+              )}
+
               <div className="bg-muted rounded-md p-0.5 flex gap-0.5">
                 <Button variant={activeView === 'kanban' ? 'secondary' : 'ghost'} size="sm" onClick={() => setActiveView('kanban')} className="gap-1.5 h-8 px-2.5 text-xs">
                   <LayoutGrid className="h-3.5 w-3.5" />
@@ -345,12 +372,59 @@ const DealsPage = () => {
                 </Button>
               </div>
 
-              {/* Settings dropdown between view toggle and Add Deal */}
-              <DealsSettingsDropdown deals={deals} onRefresh={fetchDeals} selectedDeals={[]} showColumns={activeView === 'list'} onColumnCustomize={() => {
-              window.dispatchEvent(new CustomEvent('open-deal-columns'));
-            }} />
+              {/* Actions dropdown - Consistent with Accounts pattern */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm">
+                    Actions
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="bg-popover border z-50">
+                  {activeView === 'list' && (
+                    <DropdownMenuItem onClick={() => window.dispatchEvent(new CustomEvent('open-deal-columns'))}>
+                      <Columns className="w-4 h-4 mr-2" />
+                      Columns
+                    </DropdownMenuItem>
+                  )}
+                  <DropdownMenuItem onClick={() => {
+                    const input = document.createElement('input');
+                    input.type = 'file';
+                    input.accept = '.csv';
+                    input.onchange = async (e) => {
+                      const file = (e.target as HTMLInputElement).files?.[0];
+                      if (file) {
+                        await handleImport(file);
+                      }
+                    };
+                    input.click();
+                  }}>
+                    <Upload className="w-4 h-4 mr-2" />
+                    Import CSV
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => {
+                    if (selectedDealIds.length > 0) {
+                      handleExportSelected(deals, selectedDealIds);
+                    } else {
+                      handleExportAll(deals);
+                    }
+                  }}>
+                    <Download className="w-4 h-4 mr-2" />
+                    Export {selectedDealIds.length > 0 ? `(${selectedDealIds.length})` : 'CSV'}
+                  </DropdownMenuItem>
+                  {selectedDealIds.length > 0 && (
+                    <DropdownMenuItem 
+                      onClick={() => setShowBulkDeleteDialog(true)}
+                      className="text-destructive focus:text-destructive"
+                    >
+                      <Trash2 className="w-4 h-4 mr-2" />
+                      Delete Selected ({selectedDealIds.length})
+                    </DropdownMenuItem>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
 
-              <Button variant="outline" size="sm" onClick={() => handleCreateDeal('Lead')}>
+              <Button size="sm" onClick={() => handleCreateDeal('Lead')} className="gap-1.5">
+                <Plus className="h-4 w-4" />
                 Add Deal
               </Button>
             </div>
@@ -359,12 +433,51 @@ const DealsPage = () => {
       </div>
 
       {/* Main Content Area - Takes remaining height */}
-      <div className="flex-1 min-h-0 overflow-hidden">
-        {activeView === 'kanban' ? <KanbanBoard deals={filteredDeals} onUpdateDeal={handleUpdateDeal} onDealClick={handleDealClick} onCreateDeal={handleCreateDeal} onDeleteDeals={handleDeleteDeals} onImportDeals={handleImportDeals} onRefresh={fetchDeals} /> : <ListView deals={filteredDeals} onDealClick={handleDealClick} onUpdateDeal={handleUpdateDeal} onDeleteDeals={handleDeleteDeals} onImportDeals={handleImportDeals} initialStageFilter={stageFilterFromUrl} />}
+      <div className="flex-1 min-h-0 flex flex-col px-4 pt-2 pb-4 overflow-hidden">
+        {showSkeleton ? (
+          <div className="space-y-4 flex-1">
+            <div className="h-10 bg-muted animate-pulse rounded" />
+            <div className="h-64 bg-muted animate-pulse rounded" />
+          </div>
+        ) : activeView === 'kanban' ? (
+          <KanbanBoard 
+            deals={filteredDeals} 
+            onUpdateDeal={handleUpdateDeal} 
+            onDealClick={handleDealClick} 
+            onCreateDeal={handleCreateDeal} 
+            onDeleteDeals={handleDeleteDeals} 
+            onImportDeals={handleImportDeals} 
+            onRefresh={fetchDeals} 
+          />
+        ) : (
+          <ListView 
+            deals={filteredDeals} 
+            onDealClick={handleDealClick} 
+            onUpdateDeal={handleUpdateDeal} 
+            onDeleteDeals={handleDeleteDeals} 
+            onImportDeals={handleImportDeals} 
+            initialStageFilter={stageFilterFromUrl}
+            onSelectionChange={setSelectedDealIds}
+          />
+        )}
       </div>
 
       {/* Deal Form Modal */}
       <DealForm deal={selectedDeal} isOpen={isFormOpen} onClose={handleCloseForm} onSave={handleSaveDeal} onRefresh={fetchDeals} isCreating={isCreating} initialStage={initialStage} />
+
+      {/* Bulk Delete Confirmation Dialog */}
+      <DeleteConfirmDialog
+        open={showBulkDeleteDialog}
+        onOpenChange={setShowBulkDeleteDialog}
+        onConfirm={() => {
+          handleDeleteDeals(selectedDealIds);
+          setSelectedDealIds([]);
+          setShowBulkDeleteDialog(false);
+        }}
+        title="Delete Deals"
+        itemName={`${selectedDealIds.length} deal${selectedDealIds.length > 1 ? 's' : ''}`}
+        itemType="deals"
+      />
     </div>;
 };
 export default DealsPage;

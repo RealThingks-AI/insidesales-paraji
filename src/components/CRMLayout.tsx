@@ -1,7 +1,7 @@
-
 import { ReactNode } from "react";
 import { AppSidebar } from "./AppSidebar";
 import { NotificationBell } from "./NotificationBell";
+import AnnouncementBanner from "./AnnouncementBanner";
 import { Button } from "./ui/button";
 import { User, LogOut } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
@@ -17,6 +17,9 @@ export const CRMLayout = ({ children }: CRMLayoutProps) => {
     <div className="min-h-screen bg-background flex">
       <AppSidebar />
       <div className="flex-1 flex flex-col">
+        {/* Announcement Banner */}
+        <AnnouncementBanner />
+        
         {/* Top Navigation Bar */}
         <header className="bg-white border-b border-border px-6 py-4 flex items-center justify-between shadow-sm">
           <div className="flex items-center gap-4">
@@ -41,7 +44,7 @@ export const CRMLayout = ({ children }: CRMLayoutProps) => {
         </header>
 
         {/* Main Content */}
-        <main className="flex-1 p-6 overflow-auto">
+        <main className="flex-1 overflow-hidden">
           {children}
         </main>
       </div>

@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from 'sonner';
 import { supabase } from "@/integrations/supabase/client";
 import { useUserRole } from "@/hooks/useUserRole";
 import { Search, Lock, ShieldAlert, RefreshCw } from "lucide-react";
@@ -26,7 +26,6 @@ const PageAccessSettings = () => {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [updating, setUpdating] = useState<string | null>(null);
-  const { toast } = useToast();
   const { isAdmin, loading: roleLoading } = useUserRole();
 
   const fetchPermissions = useCallback(async () => {
@@ -40,15 +39,11 @@ const PageAccessSettings = () => {
       setPermissions(data || []);
     } catch (error: any) {
       console.error('Error fetching page permissions:', error);
-      toast({
-        title: "Error",
-        description: "Failed to fetch page permissions",
-        variant: "destructive",
-      });
+      toast.error('Failed to fetch page permissions');
     } finally {
       setLoading(false);
     }
-  }, [toast]);
+  }, []);
 
   useEffect(() => {
     if (!roleLoading && isAdmin) {
@@ -64,11 +59,7 @@ const PageAccessSettings = () => {
     currentValue: boolean
   ) => {
     if (!isAdmin) {
-      toast({
-        title: "Access Denied",
-        description: "Only admins can modify page permissions",
-        variant: "destructive",
-      });
+      toast.error('Only admins can modify page permissions');
       return;
     }
 
@@ -89,17 +80,10 @@ const PageAccessSettings = () => {
           : p
       ));
 
-      toast({
-        title: "Success",
-        description: "Permission updated successfully",
-      });
+      toast.success('Permission updated successfully');
     } catch (error: any) {
       console.error('Error updating permission:', error);
-      toast({
-        title: "Error",
-        description: "Failed to update permission",
-        variant: "destructive",
-      });
+      toast.error('Failed to update permission');
     } finally {
       setUpdating(null);
     }

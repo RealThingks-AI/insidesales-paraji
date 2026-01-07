@@ -1,7 +1,7 @@
 import { ContactTable, ContactTableRef } from "@/components/ContactTable";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Settings, Trash2, Upload, Download, Mail } from "lucide-react";
+import { Settings, Trash2, Upload, Download, Mail, Plus } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useState, useRef } from "react";
 import { Input } from "@/components/ui/input";
@@ -96,7 +96,7 @@ const Contacts = () => {
         <div className="px-6 h-16 flex items-center border-b w-full">
           <div className="flex items-center justify-between w-full">
             <div className="min-w-0 flex-1">
-              <h1 className="text-2xl text-foreground font-semibold">Contacts</h1>
+              <h1 className="text-xl text-foreground font-semibold">Contacts</h1>
             </div>
             <div className="flex items-center gap-3">
               {selectedContacts.length > 0 && (
@@ -162,7 +162,8 @@ const Contacts = () => {
                 </DropdownMenuContent>
               </DropdownMenu>
 
-              <Button variant="outline" size="sm" onClick={() => setShowModal(true)}>
+              <Button size="sm" onClick={() => setShowModal(true)} className="gap-1.5">
+                <Plus className="w-4 h-4" />
                 Add Contact
               </Button>
             </div>
@@ -181,7 +182,7 @@ const Contacts = () => {
       />
 
       {/* Main Content Area */}
-      <div className="flex-1 min-h-0 overflow-auto px-4 pt-2 pb-4">
+      <div className="flex-1 min-h-0 flex flex-col px-4 pt-2 pb-4">
         <ContactTable 
           ref={contactTableRef}
           showColumnCustomizer={showColumnCustomizer} 

@@ -7,7 +7,7 @@ interface HighlightedTextProps {
 }
 
 export const HighlightedText = ({ text, highlight, className }: HighlightedTextProps) => {
-  if (!text) return <span className={className}>-</span>;
+  if (!text) return <span className={cn("block text-center w-full", className)}>-</span>;
   if (!highlight.trim()) return <span className={className}>{text}</span>;
 
   const regex = new RegExp(`(${highlight.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');

@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from 'sonner';
 import { supabase } from "@/integrations/supabase/client";
 import { useUserRole } from "@/hooks/useUserRole";
 import { useAuth } from "@/hooks/useAuth";
@@ -59,7 +59,6 @@ const BackupRestoreSettings = () => {
   const [confirmText, setConfirmText] = useState('');
   const [scheduledBackup, setScheduledBackup] = useState(false);
   const [userNames, setUserNames] = useState<Record<string, string>>({});
-  const { toast } = useToast();
   const { isAdmin, loading: roleLoading } = useUserRole();
   const { user } = useAuth();
 
@@ -92,15 +91,11 @@ const BackupRestoreSettings = () => {
       }
     } catch (error: any) {
       console.error('Error fetching backups:', error);
-      toast({
-        title: "Error",
-        description: "Failed to fetch backups",
-        variant: "destructive",
-      });
+      toast.error('Failed to fetch backups');
     } finally {
       setLoading(false);
     }
-  }, [toast]);
+  }, []);
 
   useEffect(() => {
     if (!roleLoading && isAdmin) {
@@ -112,11 +107,7 @@ const BackupRestoreSettings = () => {
 
   const handleCreateBackup = async () => {
     if (!isAdmin) {
-      toast({
-        title: "Access Denied",
-        description: "Only admins can create backups",
-        variant: "destructive",
-      });
+      toast.error('Only admins can create backups');
       return;
     }
 
@@ -129,19 +120,12 @@ const BackupRestoreSettings = () => {
 
       if (error) throw error;
 
-      toast({
-        title: "Success",
-        description: "Backup created successfully",
-      });
+      toast.success('Backup created successfully');
       
       await fetchBackups();
     } catch (error: any) {
       console.error('Error creating backup:', error);
-      toast({
-        title: "Error",
-        description: error.message || "Failed to create backup",
-        variant: "destructive",
-      });
+      toast.error(error.message || 'Failed to create backup');
     } finally {
       setCreating(false);
     }
@@ -164,17 +148,10 @@ const BackupRestoreSettings = () => {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
 
-      toast({
-        title: "Success",
-        description: "Backup download started",
-      });
+      toast.success('Backup download started');
     } catch (error: any) {
       console.error('Error downloading backup:', error);
-      toast({
-        title: "Error",
-        description: "Failed to download backup",
-        variant: "destructive",
-      });
+      toast.error('Failed to download backup');
     }
   };
 
@@ -198,17 +175,10 @@ const BackupRestoreSettings = () => {
 
       if (error) throw error;
 
-      toast({
-        title: "Restore Started",
-        description: "The restore process has been initiated. This may take a few minutes.",
-      });
+      toast.success('Restore process initiated. This may take a few minutes.');
     } catch (error: any) {
       console.error('Error restoring backup:', error);
-      toast({
-        title: "Error",
-        description: error.message || "Failed to restore backup",
-        variant: "destructive",
-      });
+      toast.error(error.message || 'Failed to restore backup');
     } finally {
       setRestoring(null);
       setSelectedBackup(null);
@@ -242,19 +212,12 @@ const BackupRestoreSettings = () => {
 
       if (dbError) throw dbError;
 
-      toast({
-        title: "Success",
-        description: "Backup deleted successfully",
-      });
+      toast.success('Backup deleted successfully');
 
       await fetchBackups();
     } catch (error: any) {
       console.error('Error deleting backup:', error);
-      toast({
-        title: "Error",
-        description: "Failed to delete backup",
-        variant: "destructive",
-      });
+      toast.error('Failed to delete backup');
     } finally {
       setDeleting(null);
       setSelectedBackup(null);
@@ -365,12 +328,15 @@ const BackupRestoreSettings = () => {
           </Card>
         </div>
 
-        {/* Scheduled Backup Toggle */}
+        {/* Scheduled Backup Toggle - Feature Coming Soon */}
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div className="space-y-0.5">
-                <Label htmlFor="scheduled-backup" className="text-base">Scheduled Backups</Label>
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="scheduled-backup" className="text-base">Scheduled Backups</Label>
+                  <Badge variant="secondary" className="text-xs">Coming Soon</Badge>
+                </div>
                 <p className="text-sm text-muted-foreground">
                   Automatically create daily backups at midnight
                 </p>
@@ -379,6 +345,7 @@ const BackupRestoreSettings = () => {
                 id="scheduled-backup"
                 checked={scheduledBackup}
                 onCheckedChange={setScheduledBackup}
+                disabled
               />
             </div>
           </CardContent>

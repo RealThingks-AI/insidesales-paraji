@@ -11,6 +11,7 @@ import { BulkEmailModal, BulkEmailRecipient } from "@/components/BulkEmailModal"
 import { supabase } from "@/integrations/supabase/client";
 import { useSearchParams } from "react-router-dom";
 
+// Leads page component
 const Leads = () => {
   const [searchParams] = useSearchParams();
   const initialStatus = searchParams.get('status') || 'all';
@@ -103,7 +104,7 @@ const Leads = () => {
         <div className="px-6 h-16 flex items-center border-b w-full">
           <div className="flex items-center justify-between w-full">
             <div className="min-w-0 flex-1">
-              <h1 className="text-2xl text-foreground font-semibold">Leads</h1>
+              <h1 className="text-xl text-foreground font-semibold">Leads</h1>
             </div>
             <div className="flex items-center gap-3">
               {selectedLeads.length > 0 && (
@@ -165,7 +166,8 @@ const Leads = () => {
                 </DropdownMenuContent>
               </DropdownMenu>
 
-              <Button variant="outline" size="sm" onClick={() => setShowModal(true)}>
+              <Button size="sm" onClick={() => setShowModal(true)} className="gap-1.5">
+                <Plus className="w-4 h-4" />
                 Add Lead
               </Button>
             </div>
@@ -179,11 +181,11 @@ const Leads = () => {
         type="file" 
         accept=".csv" 
         onChange={handleFileSelect} 
-        style={{ display: 'none' }} 
+        className="hidden"
       />
 
       {/* Main Content Area */}
-      <div className="flex-1 min-h-0 overflow-auto px-4 pt-2 pb-4">
+      <div className="flex-1 min-h-0 flex flex-col px-4 pt-2 pb-4">
         <LeadTable 
           ref={leadTableRef}
           showColumnCustomizer={showColumnCustomizer} 

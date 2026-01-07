@@ -32,9 +32,8 @@ export const RowActionsDropdown = ({ actions }: RowActionsDropdownProps) => {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-48 bg-popover border border-border shadow-lg z-50">
-        {actions.map((action, index) => (
-          <React.Fragment key={index}>
-            {action.separator && index > 0 && <DropdownMenuSeparator />}
+        {actions.map((action, index) => {
+          const menuItem = (
             <DropdownMenuItem
               onClick={action.onClick}
               disabled={action.disabled}
@@ -44,8 +43,18 @@ export const RowActionsDropdown = ({ actions }: RowActionsDropdownProps) => {
               <span className="mr-2" aria-hidden="true">{action.icon}</span>
               {action.label}
             </DropdownMenuItem>
-          </React.Fragment>
-        ))}
+          );
+          
+          if (action.separator && index > 0) {
+            return (
+              <div key={index}>
+                <DropdownMenuSeparator />
+                {menuItem}
+              </div>
+            );
+          }
+          return <div key={index}>{menuItem}</div>;
+        })}
       </DropdownMenuContent>
     </DropdownMenu>
   );

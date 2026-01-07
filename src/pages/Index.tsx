@@ -269,9 +269,6 @@ const Index = () => {
             <Button onClick={() => handleCreateDeal('Lead')} size="sm" className="gap-2">
               <Plus className="w-4 h-4" /> New Deal
             </Button>
-            <Button variant="ghost" size="sm" onClick={handleSignOut}>
-              <LogOut className="w-4 h-4" />
-            </Button>
           </div>
         </div>
       </header>

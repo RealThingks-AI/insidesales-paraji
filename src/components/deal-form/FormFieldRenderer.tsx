@@ -12,6 +12,7 @@ import { Deal } from "@/types/deal";
 import { LeadSearchableDropdown } from "@/components/LeadSearchableDropdown";
 import { supabase } from "@/integrations/supabase/client";
 import { useState, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useUserDisplayNames } from "@/hooks/useUserDisplayNames";
 
 interface FormFieldRendererProps {
@@ -59,6 +60,8 @@ export const FormFieldRenderer = ({ field, value, onChange, onLeadSelect, error 
       customer_name: 'Customer Name',
       lead_name: 'Lead Name',
       lead_owner: 'Lead Owner',
+      account_id: 'Account',
+      contact_id: 'Contact',
       region: 'Region',
       priority: 'Priority',
       probability: 'Probability (%)',
@@ -252,8 +255,67 @@ export const FormFieldRenderer = ({ field, value, onChange, onLeadSelect, error 
     );
   };
 
+  // Fetch accounts and contacts for dropdowns
+  const { data: accounts = [] } = useQuery({
+    queryKey: ['accounts-for-deals'],
+    queryFn: async () => {
+      const { data } = await supabase.from('accounts').select('id, company_name').order('company_name');
+      return data || [];
+    },
+    enabled: field === 'account_id',
+  });
+
+  const { data: contacts = [] } = useQuery({
+    queryKey: ['contacts-for-deals', value],
+    queryFn: async () => {
+      const { data } = await supabase.from('contacts').select('id, contact_name, account_id').order('contact_name');
+      return data || [];
+    },
+    enabled: field === 'contact_id',
+  });
+
   const renderField = () => {
     switch (field) {
+      case 'account_id':
+        return (
+          <Select
+            value={value || ''}
+            onValueChange={(val) => onChange(field, val || null)}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Select account..." />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">No account</SelectItem>
+              {accounts.map((acc: any) => (
+                <SelectItem key={acc.id} value={acc.id}>
+                  {acc.company_name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        );
+
+      case 'contact_id':
+        return (
+          <Select
+            value={value || ''}
+            onValueChange={(val) => onChange(field, val || null)}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Select contact..." />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">No contact</SelectItem>
+              {contacts.map((contact: any) => (
+                <SelectItem key={contact.id} value={contact.id}>
+                  {contact.contact_name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        );
+
       case 'lead_name':
         return (
           <LeadSearchableDropdown
@@ -280,7 +342,7 @@ export const FormFieldRenderer = ({ field, value, onChange, onLeadSelect, error 
             onValueChange={(val) => onChange(field, parseInt(val))}
           >
             <SelectTrigger>
-              <SelectValue placeholder="Select priority" />
+              <SelectValue placeholder="Select priority..." />
             </SelectTrigger>
             <SelectContent>
               {[1, 2, 3, 4, 5].map(num => (
@@ -302,7 +364,7 @@ export const FormFieldRenderer = ({ field, value, onChange, onLeadSelect, error 
             }}
           >
             <SelectTrigger>
-              <SelectValue placeholder="Select probability" />
+              <SelectValue placeholder="Select probability..." />
             </SelectTrigger>
             <SelectContent>
               {[10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map(percent => (
@@ -321,7 +383,7 @@ export const FormFieldRenderer = ({ field, value, onChange, onLeadSelect, error 
             onValueChange={(val) => onChange(field, val)}
           >
             <SelectTrigger>
-              <SelectValue placeholder="Select region" />
+              <SelectValue placeholder="Select region..." />
             </SelectTrigger>
             <SelectContent>
               {['EU', 'US', 'ASIA', 'Other'].map(region => (
@@ -340,7 +402,7 @@ export const FormFieldRenderer = ({ field, value, onChange, onLeadSelect, error 
             onValueChange={(val) => onChange(field, val)}
           >
             <SelectTrigger>
-              <SelectValue placeholder="Select customer need" />
+              <SelectValue placeholder="Select customer need..." />
             </SelectTrigger>
             <SelectContent>
               {['Open', 'Ongoing', 'Done'].map(option => (
@@ -383,7 +445,7 @@ export const FormFieldRenderer = ({ field, value, onChange, onLeadSelect, error 
             onValueChange={(val) => onChange(field, val)}
           >
             <SelectTrigger>
-              <SelectValue placeholder="Select relationship strength" />
+              <SelectValue placeholder="Select relationship strength..." />
             </SelectTrigger>
             <SelectContent>
               {['Low', 'Medium', 'High'].map(option => (
@@ -406,7 +468,7 @@ export const FormFieldRenderer = ({ field, value, onChange, onLeadSelect, error 
               console.log(`Budget update: setting to ${e.target.value}`);
               handleNumericChange(field, e.target.value);
             }}
-            placeholder="Enter budget in euros..."
+            placeholder="e.g., 50000"
           />
         );
 
@@ -420,7 +482,7 @@ export const FormFieldRenderer = ({ field, value, onChange, onLeadSelect, error 
             }}
           >
             <SelectTrigger>
-              <SelectValue placeholder="Select recurring status" />
+              <SelectValue placeholder="Select recurring status..." />
             </SelectTrigger>
             <SelectContent>
               {['Yes', 'No', 'Unclear'].map(option => (

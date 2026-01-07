@@ -1,41 +1,13 @@
+import { usePermissions } from '@/contexts/PermissionsContext';
 
-import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
-import { useAuth } from '@/hooks/useAuth';
-
+/**
+ * @deprecated Use usePermissions() from PermissionsContext instead for better performance.
+ * This hook is kept for backward compatibility.
+ */
 export const useUserRole = () => {
-  const [userRole, setUserRole] = useState<string>('user');
-  const [loading, setLoading] = useState(true);
-  const { user } = useAuth();
+  const { userRole, isAdmin, isManager, loading, refreshPermissions } = usePermissions();
 
-  useEffect(() => {
-    const fetchUserRole = async () => {
-      if (!user) {
-        setUserRole('user');
-        setLoading(false);
-        return;
-      }
-
-      try {
-        console.log('Fetching role for user:', user.email);
-        
-        // Check user metadata directly for role
-        const role = user.user_metadata?.role || 'user';
-        console.log('User role from metadata:', role);
-        setUserRole(role);
-      } catch (error) {
-        console.error('Error in fetchUserRole:', error);
-        setUserRole('user');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchUserRole();
-  }, [user]);
-
-  const isAdmin = userRole === 'admin';
-  const canEdit = isAdmin;
+  const canEdit = isAdmin || isManager;
   const canDelete = isAdmin;
   const canManageUsers = isAdmin;
   const canAccessSettings = isAdmin;
@@ -43,10 +15,12 @@ export const useUserRole = () => {
   return {
     userRole,
     isAdmin,
+    isManager,
     canEdit,
     canDelete,
     canManageUsers,
     canAccessSettings,
-    loading
+    loading,
+    refreshRole: refreshPermissions
   };
 };

@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Button } from "@/components/ui/button";
 import {
@@ -7,7 +6,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Settings, Upload, Download, Columns } from "lucide-react";
+import { Upload, Download, Columns } from "lucide-react";
 import { Deal } from "@/types/deal";
 import { useDealsImportExport } from "@/hooks/useDealsImportExport";
 
@@ -58,5 +57,29 @@ export const DealActionsDropdown = ({
     input.click();
   };
 
-  return null;
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="outline" size="sm">
+          Actions
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="bg-popover border z-50">
+        <DropdownMenuItem onClick={handleImportClick}>
+          <Upload className="w-4 h-4 mr-2" />
+          Import
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={handleExportClick}>
+          <Download className="w-4 h-4 mr-2" />
+          Export {selectedDeals.length > 0 ? `(${selectedDeals.length})` : 'All'}
+        </DropdownMenuItem>
+        {showColumns && onColumnCustomize && (
+          <DropdownMenuItem onClick={onColumnCustomize}>
+            <Columns className="w-4 h-4 mr-2" />
+            Columns
+          </DropdownMenuItem>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
 };

@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useToast } from "@/hooks/use-toast";
-import { Key, Loader2 } from "lucide-react";
+import { Progress } from "@/components/ui/progress";
+import { toast } from "sonner";
+import { Key, Loader2, Check, X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useSecurityAudit } from "@/hooks/useSecurityAudit";
@@ -17,6 +18,11 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 
+interface PasswordRequirement {
+  label: string;
+  met: boolean;
+}
+
 const SecuritySettings = () => {
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [isChangingPassword, setIsChangingPassword] = useState(false);
@@ -24,28 +30,52 @@ const SecuritySettings = () => {
     newPassword: '',
     confirmPassword: ''
   });
-  const { toast } = useToast();
   const { user } = useAuth();
   const { logSecurityEvent } = useSecurityAudit();
+
+  // Password validation requirements
+  const passwordRequirements = useMemo((): PasswordRequirement[] => {
+    const password = passwordData.newPassword;
+    return [
+      { label: 'At least 8 characters', met: password.length >= 8 },
+      { label: 'At least one uppercase letter', met: /[A-Z]/.test(password) },
+      { label: 'At least one lowercase letter', met: /[a-z]/.test(password) },
+      { label: 'At least one number', met: /\d/.test(password) },
+      { label: 'At least one special character (!@#$%^&*)', met: /[!@#$%^&*(),.?":{}|<>]/.test(password) },
+    ];
+  }, [passwordData.newPassword]);
+
+  const allRequirementsMet = passwordRequirements.every(req => req.met);
+  const passwordsMatch = passwordData.newPassword === passwordData.confirmPassword && passwordData.confirmPassword.length > 0;
+
+  // Calculate password strength percentage
+  const passwordStrength = useMemo(() => {
+    const metCount = passwordRequirements.filter(req => req.met).length;
+    return (metCount / passwordRequirements.length) * 100;
+  }, [passwordRequirements]);
+
+  const getStrengthColor = () => {
+    if (passwordStrength < 40) return 'bg-destructive';
+    if (passwordStrength < 80) return 'bg-yellow-500';
+    return 'bg-green-500';
+  };
+
+  const getStrengthLabel = () => {
+    if (passwordStrength < 40) return 'Weak';
+    if (passwordStrength < 80) return 'Medium';
+    return 'Strong';
+  };
 
   const handlePasswordChange = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (passwordData.newPassword !== passwordData.confirmPassword) {
-      toast({
-        title: "Error",
-        description: "Passwords do not match",
-        variant: "destructive"
-      });
+    if (!allRequirementsMet) {
+      toast.error('Please meet all password requirements');
       return;
     }
 
-    if (passwordData.newPassword.length < 6) {
-      toast({
-        title: "Error",
-        description: "Password must be at least 6 characters",
-        variant: "destructive"
-      });
+    if (!passwordsMatch) {
+      toast.error('Passwords do not match');
       return;
     }
 
@@ -64,16 +94,9 @@ const SecuritySettings = () => {
       setPasswordData({ newPassword: '', confirmPassword: '' });
       setShowPasswordModal(false);
       
-      toast({
-        title: "Password Updated",
-        description: "Your password has been changed successfully."
-      });
+      toast.success('Your password has been changed successfully.');
     } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to update password",
-        variant: "destructive"
-      });
+      toast.error(error.message || 'Failed to update password');
     } finally {
       setIsChangingPassword(false);
     }
@@ -122,7 +145,7 @@ const SecuritySettings = () => {
               Change Password
             </DialogTitle>
             <DialogDescription>
-              Enter your new password below
+              Create a strong password that meets all requirements
             </DialogDescription>
           </DialogHeader>
           
@@ -141,7 +164,42 @@ const SecuritySettings = () => {
                 className="h-9"
                 required
               />
+              
+              {/* Password Strength Indicator */}
+              {passwordData.newPassword.length > 0 && (
+                <div className="space-y-2 mt-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">Password strength</span>
+                    <span className={`font-medium ${
+                      passwordStrength < 40 ? 'text-destructive' : 
+                      passwordStrength < 80 ? 'text-yellow-600' : 'text-green-600'
+                    }`}>
+                      {getStrengthLabel()}
+                    </span>
+                  </div>
+                  <Progress value={passwordStrength} className="h-1.5" />
+                </div>
+              )}
             </div>
+            
+            {/* Password Requirements Checklist */}
+            {passwordData.newPassword.length > 0 && (
+              <div className="space-y-1.5 p-3 bg-muted/50 rounded-lg">
+                <p className="text-xs font-medium text-muted-foreground mb-2">Requirements:</p>
+                {passwordRequirements.map((req, index) => (
+                  <div key={index} className="flex items-center gap-2 text-xs">
+                    {req.met ? (
+                      <Check className="h-3.5 w-3.5 text-green-500" />
+                    ) : (
+                      <X className="h-3.5 w-3.5 text-muted-foreground" />
+                    )}
+                    <span className={req.met ? 'text-foreground' : 'text-muted-foreground'}>
+                      {req.label}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
             
             <div className="space-y-1.5">
               <Label htmlFor="confirmPassword" className="text-xs">Confirm Password</Label>
@@ -157,6 +215,21 @@ const SecuritySettings = () => {
                 className="h-9"
                 required
               />
+              {passwordData.confirmPassword.length > 0 && (
+                <div className="flex items-center gap-1.5 text-xs mt-1">
+                  {passwordsMatch ? (
+                    <>
+                      <Check className="h-3.5 w-3.5 text-green-500" />
+                      <span className="text-green-600">Passwords match</span>
+                    </>
+                  ) : (
+                    <>
+                      <X className="h-3.5 w-3.5 text-destructive" />
+                      <span className="text-destructive">Passwords do not match</span>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
 
             <DialogFooter className="gap-2 sm:gap-0">
@@ -171,7 +244,7 @@ const SecuritySettings = () => {
               <Button 
                 type="submit" 
                 size="sm"
-                disabled={isChangingPassword || !passwordData.newPassword || !passwordData.confirmPassword}
+                disabled={isChangingPassword || !allRequirementsMet || !passwordsMatch}
               >
                 {isChangingPassword ? (
                   <>

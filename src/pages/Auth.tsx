@@ -145,12 +145,11 @@ const Auth = () => {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-muted">
       <Card className="w-full max-w-md shadow-2xl border-0">
-        <CardHeader className="text-center">
+        <CardHeader className="text-center space-y-2">
           <CardTitle className="text-3xl font-bold bg-gradient-to-r from-primary to-primary/80 bg-clip-text text-transparent">
             RealThingks CRM
           </CardTitle>
-          <CardDescription className="text-base mt-2">
-          </CardDescription>
+          <p className="text-sm text-foreground/70">Sign in to your account</p>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSignIn} className="space-y-4">
@@ -180,7 +179,7 @@ const Auth = () => {
             </div>
             <Button 
               type="submit" 
-              className="w-full btn-primary text-lg py-3" 
+              className="w-full bg-primary/90 hover:bg-primary text-primary-foreground text-lg py-3" 
               disabled={loading}
             >
               {loading ? "Signing in..." : "Sign In"}

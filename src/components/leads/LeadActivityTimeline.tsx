@@ -10,9 +10,10 @@ import {
   CheckSquare,
   Briefcase,
   Clock,
-  Loader2
+  Loader2,
 } from "lucide-react";
 import { format } from "date-fns";
+import { ActivityDetailModal } from "@/components/shared/ActivityDetailModal";
 
 interface TimelineItem {
   id: string;
@@ -41,11 +42,11 @@ const getActivityIcon = (type: string) => {
 
 const getActivityColor = (type: string) => {
   switch (type) {
-    case 'call': return 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300';
-    case 'email': return 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300';
-    case 'meeting': return 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300';
-    case 'note': return 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300';
-    case 'task': return 'bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300';
+    case 'call': return 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300';
+    case 'email': return 'bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300';
+    case 'meeting': return 'bg-stone-100 text-stone-700 dark:bg-stone-800 dark:text-stone-300';
+    case 'note': return 'bg-neutral-100 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300';
+    case 'task': return 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300';
     default: return 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300';
   }
 };
@@ -53,6 +54,7 @@ const getActivityColor = (type: string) => {
 export const LeadActivityTimeline = ({ leadId }: LeadActivityTimelineProps) => {
   const [timeline, setTimeline] = useState<TimelineItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedActivity, setSelectedActivity] = useState<TimelineItem | null>(null);
 
   useEffect(() => {
     fetchTimeline();
@@ -149,49 +151,61 @@ export const LeadActivityTimeline = ({ leadId }: LeadActivityTimelineProps) => {
   }
 
   return (
-    <ScrollArea className="h-[400px]">
-      <div className="relative pl-6">
-        {/* Timeline line */}
-        <div className="absolute left-2 top-2 bottom-2 w-0.5 bg-border" />
-        
-        <div className="space-y-4">
-          {timeline.map((item) => (
-            <div key={item.id} className="relative">
-              {/* Timeline dot */}
-              <div className={`absolute -left-4 mt-1.5 w-4 h-4 rounded-full flex items-center justify-center ${
-                item.type === 'meeting'
-                  ? 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300'
-                  : getActivityColor(item.metadata?.type || '')
-              }`}>
-                {item.icon}
-              </div>
-              
-              <div className="ml-4 p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium text-sm truncate">{item.title}</p>
-                    {item.description && (
-                      <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
-                        {item.description}
-                      </p>
-                    )}
-                  </div>
-                  <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                    <span className="text-xs text-muted-foreground">
-                      {format(new Date(item.date), 'dd/MM/yyyy')}
-                    </span>
-                    {item.metadata?.type && (
-                      <Badge variant="outline" className="text-xs capitalize">
-                        {item.metadata.type}
-                      </Badge>
-                    )}
+    <>
+      <ScrollArea className="h-[350px]">
+        <div className="relative pl-6">
+          {/* Timeline line */}
+          <div className="absolute left-2 top-2 bottom-2 w-0.5 bg-border" />
+          
+          <div className="space-y-4">
+            {timeline.map((item) => (
+              <div 
+                key={item.id} 
+                className="relative cursor-pointer"
+                onClick={() => setSelectedActivity(item)}
+              >
+                {/* Timeline dot */}
+                <div className={`absolute -left-4 mt-1.5 w-4 h-4 rounded-full flex items-center justify-center ${
+                  item.type === 'meeting'
+                    ? 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300'
+                    : getActivityColor(item.metadata?.type || '')
+                }`}>
+                  {item.icon}
+                </div>
+                
+                <div className="ml-4 p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-sm truncate">{item.title}</p>
+                      {item.description && (
+                        <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
+                          {item.description}
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                      <span className="text-xs text-muted-foreground">
+                        {format(new Date(item.date), 'dd/MM/yyyy')}
+                      </span>
+                      {item.metadata?.type && (
+                        <Badge variant="outline" className="text-xs capitalize">
+                          {item.metadata.type}
+                        </Badge>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
-      </div>
-    </ScrollArea>
+      </ScrollArea>
+
+      <ActivityDetailModal
+        open={!!selectedActivity}
+        onOpenChange={(open) => !open && setSelectedActivity(null)}
+        activity={selectedActivity}
+      />
+    </>
   );
 };

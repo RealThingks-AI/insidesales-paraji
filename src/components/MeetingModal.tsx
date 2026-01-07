@@ -307,12 +307,16 @@ interface MeetingModalProps {
   onOpenChange: (open: boolean) => void;
   meeting?: Meeting | null;
   onSuccess: () => void;
+  initialLeadId?: string;
+  initialContactId?: string;
 }
 export const MeetingModal = ({
   open,
   onOpenChange,
   meeting,
-  onSuccess
+  onSuccess,
+  initialLeadId,
+  initialContactId
 }: MeetingModalProps) => {
   const {
     user
@@ -482,25 +486,37 @@ export const MeetingModal = ({
 
   // Compute proposed meeting times for conflict detection
   const proposedStartTime = useMemo(() => {
-    if (!startDate) return "";
+    if (!startDate || Number.isNaN(startDate.getTime())) return "";
+
     const [h, m] = startTime.split(":").map(Number);
+    if (Number.isNaN(h) || Number.isNaN(m)) return "";
+
     const dt = new Date(startDate);
     dt.setHours(h, m, 0, 0);
+
     const utcTime = fromZonedTime(dt, timezone);
-    return utcTime.toISOString();
+    return Number.isNaN(utcTime.getTime()) ? "" : utcTime.toISOString();
   }, [startDate, startTime, timezone]);
+
   const proposedEndTime = useMemo(() => {
-    if (!startDate) return "";
+    if (!startDate || Number.isNaN(startDate.getTime())) return "";
+
     const [h, m] = endTime.split(":").map(Number);
+    if (Number.isNaN(h) || Number.isNaN(m)) return "";
+
     const dt = new Date(startDate);
     dt.setHours(h, m, 0, 0);
+
     // Handle crossing midnight
     const [startH, startM] = startTime.split(":").map(Number);
-    if (h < startH || (h === startH && m < startM)) {
-      dt.setDate(dt.getDate() + 1);
+    if (!Number.isNaN(startH) && !Number.isNaN(startM)) {
+      if (h < startH || (h === startH && m < startM)) {
+        dt.setDate(dt.getDate() + 1);
+      }
     }
+
     const utcTime = fromZonedTime(dt, timezone);
-    return utcTime.toISOString();
+    return Number.isNaN(utcTime.getTime()) ? "" : utcTime.toISOString();
   }, [startDate, startTime, endTime, timezone]);
   useEffect(() => {
     const initializeModal = async () => {
@@ -511,12 +527,18 @@ export const MeetingModal = ({
         if (meeting) {
           const start = new Date(meeting.start_time);
           const end = new Date(meeting.end_time);
-          const durationMs = end.getTime() - start.getTime();
-          const durationMinutes = Math.round(durationMs / (1000 * 60));
 
-          setStartDate(start);
-          setStartTime(format(start, "HH:mm"));
-          setEndTime(format(end, "HH:mm"));
+          const startValid = !Number.isNaN(start.getTime());
+          const endValid = !Number.isNaN(end.getTime());
+
+          const safeStartDate = startValid ? start : toZonedTime(new Date(), timezone);
+          setStartDate(safeStartDate);
+          setStartTime(startValid ? format(start, "HH:mm") : "09:00");
+          setEndTime(endValid ? format(end, "HH:mm") : "10:00");
+
+          const durationMs = startValid && endValid ? end.getTime() - start.getTime() : 60 * 60 * 1000;
+          const durationMinutes = Math.max(15, Math.round(durationMs / (1000 * 60)));
+
           setDuration(durationMinutes.toString());
           setDurationMode('duration');
           setFormData({
@@ -567,7 +589,14 @@ export const MeetingModal = ({
           setEndTime(updateEndTimeFromDuration(format(defaultStart, "HH:mm"), 30));
           setDurationMode('duration');
           setTimezone(getBrowserTimezone());
-          setLinkType('lead');
+          // Set initial link type based on passed props
+          if (initialContactId) {
+            setLinkType('contact');
+          } else if (initialLeadId) {
+            setLinkType('lead');
+          } else {
+            setLinkType('lead');
+          }
           setParticipants([]);
           setEmailInput("");
           setShowParticipantsInput(false);
@@ -575,8 +604,8 @@ export const MeetingModal = ({
             subject: "",
             description: "",
             join_url: "",
-            lead_id: "",
-            contact_id: "",
+            lead_id: initialLeadId || "",
+            contact_id: initialContactId || "",
             status: "scheduled",
             outcome: ""
           });
@@ -596,25 +625,37 @@ export const MeetingModal = ({
     }
   };
   const buildISODateTime = (date: Date | undefined, time: string): string => {
-    if (!date) return "";
+    if (!date || Number.isNaN(date.getTime())) return "";
+
     const [h, m] = time.split(":").map(Number);
+    if (Number.isNaN(h) || Number.isNaN(m)) return "";
+
     const dt = new Date(date);
     dt.setHours(h, m, 0, 0);
+
     const utcTime = fromZonedTime(dt, timezone);
-    return utcTime.toISOString();
+    return Number.isNaN(utcTime.getTime()) ? "" : utcTime.toISOString();
   };
+
   const buildEndISODateTime = (date: Date | undefined, endTimeStr: string): string => {
-    if (!date) return "";
+    if (!date || Number.isNaN(date.getTime())) return "";
+
     const [h, m] = endTimeStr.split(":").map(Number);
+    if (Number.isNaN(h) || Number.isNaN(m)) return "";
+
     const dt = new Date(date);
     dt.setHours(h, m, 0, 0);
+
     // Handle crossing midnight
     const [startH, startM] = startTime.split(":").map(Number);
-    if (h < startH || (h === startH && m < startM)) {
-      dt.setDate(dt.getDate() + 1);
+    if (!Number.isNaN(startH) && !Number.isNaN(startM)) {
+      if (h < startH || (h === startH && m < startM)) {
+        dt.setDate(dt.getDate() + 1);
+      }
     }
+
     const utcTime = fromZonedTime(dt, timezone);
-    return utcTime.toISOString();
+    return Number.isNaN(utcTime.getTime()) ? "" : utcTime.toISOString();
   };
   const createTeamsMeeting = async () => {
     if (!formData.subject || !startDate) {
@@ -911,7 +952,7 @@ export const MeetingModal = ({
           <div className="space-y-1.5">
             <Label className="text-xs font-medium">Subject *</Label>
             <Input
-              placeholder="Enter meeting subject"
+              placeholder="e.g., Project kickoff meeting"
               value={formData.subject}
               onChange={(e) => setFormData(prev => ({ ...prev, subject: e.target.value }))}
               className="h-8 text-xs"
@@ -1018,7 +1059,7 @@ export const MeetingModal = ({
               <Label className="text-xs font-medium">Duration *</Label>
               <Select value={duration} onValueChange={handleDurationChange}>
                 <SelectTrigger className="h-8 text-xs">
-                  <SelectValue placeholder="Select duration" />
+                  <SelectValue placeholder="Select duration..." />
                 </SelectTrigger>
                 <SelectContent>
                   {DURATION_OPTIONS.map(option => (

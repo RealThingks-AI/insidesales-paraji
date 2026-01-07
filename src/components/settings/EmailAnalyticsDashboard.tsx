@@ -17,6 +17,7 @@ import {
   PieChart,
   Pie,
   Cell,
+  Legend,
 } from 'recharts';
 import { Mail, Eye, MousePointer, TrendingUp } from 'lucide-react';
 
@@ -121,10 +122,17 @@ export const EmailAnalyticsDashboard = () => {
 
   const COLORS = ['#3b82f6', '#10b981', '#8b5cf6', '#f59e0b', '#ef4444'];
 
+  // Generate accessible summary text for charts
+  const getChartSummary = () => {
+    const recentStats = dailyStats.slice(-7);
+    const avgSent = recentStats.reduce((a, b) => a + b.sent, 0) / Math.max(recentStats.length, 1);
+    return `Email activity chart showing ${totals.totalSent} emails sent, ${totals.openRate}% open rate, ${totals.clickRate}% click rate over ${dateRange} days. Average ${avgSent.toFixed(1)} emails sent per day in the last week.`;
+  };
+
   if (loading) {
     return (
       <div className="space-y-6">
-        <div className="grid grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {[1, 2, 3, 4].map((i) => (
             <Skeleton key={i} className="h-24" />
           ))}
@@ -137,10 +145,10 @@ export const EmailAnalyticsDashboard = () => {
   return (
     <div className="space-y-6">
       {/* Header with date range selector */}
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <h2 className="text-lg font-semibold">Email Analytics</h2>
         <Select value={dateRange} onValueChange={setDateRange}>
-          <SelectTrigger className="w-[180px]">
+          <SelectTrigger className="w-[180px]" aria-label="Select date range">
             <SelectValue placeholder="Select date range" />
           </SelectTrigger>
           <SelectContent>
@@ -218,7 +226,11 @@ export const EmailAnalyticsDashboard = () => {
             <CardTitle className="text-base">Email Activity Over Time</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="h-[300px]">
+            <div 
+              className="h-[300px]" 
+              role="img" 
+              aria-label={getChartSummary()}
+            >
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={dailyStats}>
                   <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
@@ -240,6 +252,7 @@ export const EmailAnalyticsDashboard = () => {
                       borderRadius: '8px',
                     }}
                   />
+                  <Legend />
                   <Line 
                     type="monotone" 
                     dataKey="sent" 
@@ -267,6 +280,28 @@ export const EmailAnalyticsDashboard = () => {
                 </LineChart>
               </ResponsiveContainer>
             </div>
+            {/* Hidden accessible table for screen readers */}
+            <table className="sr-only">
+              <caption>Email activity data over time</caption>
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Sent</th>
+                  <th>Opened</th>
+                  <th>Clicked</th>
+                </tr>
+              </thead>
+              <tbody>
+                {dailyStats.slice(-7).map((stat) => (
+                  <tr key={stat.date}>
+                    <td>{stat.date}</td>
+                    <td>{stat.sent}</td>
+                    <td>{stat.opened}</td>
+                    <td>{stat.clicked}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </CardContent>
         </Card>
 
@@ -276,7 +311,11 @@ export const EmailAnalyticsDashboard = () => {
             <CardTitle className="text-base">Status Distribution</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="h-[300px]">
+            <div 
+              className="h-[250px]"
+              role="img"
+              aria-label={`Status distribution: ${statusDistribution.map(s => `${s.name}: ${s.value}`).join(', ')}`}
+            >
               {statusDistribution.length > 0 ? (
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
@@ -284,8 +323,8 @@ export const EmailAnalyticsDashboard = () => {
                       data={statusDistribution}
                       cx="50%"
                       cy="50%"
-                      innerRadius={60}
-                      outerRadius={80}
+                      innerRadius={50}
+                      outerRadius={70}
                       paddingAngle={5}
                       dataKey="value"
                     >
@@ -309,12 +348,13 @@ export const EmailAnalyticsDashboard = () => {
               )}
             </div>
             {statusDistribution.length > 0 && (
-              <div className="flex flex-wrap gap-2 justify-center mt-2">
+              <div className="flex flex-col sm:flex-row flex-wrap gap-2 justify-center mt-2">
                 {statusDistribution.map((entry, index) => (
                   <div key={entry.name} className="flex items-center gap-1 text-xs">
                     <div 
-                      className="w-3 h-3 rounded-full" 
+                      className="w-3 h-3 rounded-full flex-shrink-0" 
                       style={{ backgroundColor: COLORS[index % COLORS.length] }}
+                      aria-hidden="true"
                     />
                     <span className="capitalize">{entry.name}: {entry.value}</span>
                   </div>
@@ -330,7 +370,11 @@ export const EmailAnalyticsDashboard = () => {
             <CardTitle className="text-base">Daily Engagement</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="h-[250px]">
+            <div 
+              className="h-[250px]"
+              role="img"
+              aria-label="Daily engagement bar chart showing sent, opened, and clicked emails for the last 14 days"
+            >
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={dailyStats.slice(-14)}>
                   <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
@@ -352,6 +396,7 @@ export const EmailAnalyticsDashboard = () => {
                       borderRadius: '8px',
                     }}
                   />
+                  <Legend />
                   <Bar dataKey="sent" fill="#3b82f6" radius={[4, 4, 0, 0]} name="Sent" />
                   <Bar dataKey="opened" fill="#10b981" radius={[4, 4, 0, 0]} name="Opened" />
                   <Bar dataKey="clicked" fill="#8b5cf6" radius={[4, 4, 0, 0]} name="Clicked" />
