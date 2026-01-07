@@ -237,14 +237,18 @@ export const TaskModal = ({
   const handleSubmit = async (data: TaskFormData) => {
     setLoading(true);
     try {
+      // Normalize special placeholder values to undefined
+      const normalizedAssignedTo = data.assigned_to && data.assigned_to !== 'unassigned' ? data.assigned_to : undefined;
+      const normalizedDueTime = data.due_time && data.due_time !== 'none' ? data.due_time : undefined;
+
       const taskData: CreateTaskData & { due_time?: string } = {
         title: data.title,
         description: data.description || undefined,
         status: data.status as TaskStatus,
         priority: data.priority as TaskPriority,
         due_date: data.due_date,
-        due_time: data.due_time || undefined,
-        assigned_to: data.assigned_to || undefined,
+        due_time: normalizedDueTime,
+        assigned_to: normalizedAssignedTo,
         module_type: data.module_type as TaskModuleType | undefined,
         account_id: data.account_id || undefined,
         contact_id: data.contact_id || undefined,

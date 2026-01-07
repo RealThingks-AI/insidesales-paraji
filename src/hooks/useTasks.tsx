@@ -51,12 +51,17 @@ export const useTasks = () => {
     mutationFn: async (taskData: CreateTaskData) => {
       if (!user?.id) throw new Error('User not authenticated');
 
+      // Sanitize special placeholder values that could break DB insert
+      const sanitizedData = {
+        ...taskData,
+        assigned_to: taskData.assigned_to && taskData.assigned_to !== 'unassigned' ? taskData.assigned_to : null,
+        due_time: (taskData as any).due_time && (taskData as any).due_time !== 'none' ? (taskData as any).due_time : null,
+        created_by: user.id,
+      };
+
       const { data, error } = await supabase
         .from('tasks')
-        .insert({
-          ...taskData,
-          created_by: user.id,
-        })
+        .insert(sanitizedData)
         .select()
         .single();
 
