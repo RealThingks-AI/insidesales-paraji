@@ -480,6 +480,7 @@ export const TaskModal = ({
             nested && "z-[210]"
           )}
           showOverlay={!nested}
+          disableOutsidePointerEvents={false}
           onOpenAutoFocus={(e) => { if (nested) e.preventDefault(); }}
           onPointerDownOutside={(e) => { if (nested) e.preventDefault(); }}
           onInteractOutside={(e) => { if (nested) e.preventDefault(); }}
