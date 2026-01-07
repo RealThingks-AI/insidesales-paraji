@@ -475,7 +475,10 @@ export const TaskModal = ({
     <>
       <Dialog open={open} onOpenChange={handleOpenChange} modal={!nested}>
         <DialogContent 
-          className={cn("max-w-2xl max-h-[90vh] overflow-y-auto", nested && "z-[60]")}
+          className={cn(
+            "max-w-2xl max-h-[90vh] overflow-y-auto z-[200]",
+            nested && "z-[210]"
+          )}
           showOverlay={!nested}
           onOpenAutoFocus={(e) => { if (nested) e.preventDefault(); }}
           onPointerDownOutside={(e) => { if (nested) e.preventDefault(); }}
