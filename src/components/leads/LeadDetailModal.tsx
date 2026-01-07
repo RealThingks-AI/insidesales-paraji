@@ -127,7 +127,7 @@ export const LeadDetailModal = ({
 
   return (
     <>
-      <Dialog open={open} onOpenChange={onOpenChange}>
+      <Dialog open={open} onOpenChange={onOpenChange} modal={false}>
         <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <div className="flex items-start justify-between">
@@ -463,6 +463,7 @@ export const LeadDetailModal = ({
           return null;
         }}
         context={{ module: 'leads', recordId: lead.id, recordName: lead.lead_name }}
+        nested={true}
       />
     </>
   );

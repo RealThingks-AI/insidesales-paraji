@@ -157,7 +157,7 @@ export const ContactDetailModal = ({
 
   return (
     <>
-      <Dialog open={open} onOpenChange={onOpenChange}>
+      <Dialog open={open} onOpenChange={onOpenChange} modal={false}>
         <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <div className="flex items-start justify-between">
@@ -504,6 +504,7 @@ export const ContactDetailModal = ({
         }}
         onUpdate={updateTask}
         context={{ module: 'contacts', recordId: contact.id, recordName: contact.contact_name }}
+        nested={true}
       />
     </>
   );

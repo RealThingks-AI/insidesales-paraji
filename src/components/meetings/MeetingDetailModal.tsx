@@ -222,7 +222,7 @@ export const MeetingDetailModal = ({
 
   return (
     <>
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={onOpenChange} modal={false}>
       <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <div className="flex items-start justify-between">
@@ -561,6 +561,7 @@ export const MeetingDetailModal = ({
         return null;
       }}
       context={{ module: 'meetings', recordId: meeting.id, recordName: meeting.subject, locked: true }}
+      nested={true}
     />
   </>
   );

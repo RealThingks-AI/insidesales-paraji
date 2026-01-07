@@ -305,7 +305,7 @@ export const DealForm = ({ deal, isOpen, onClose, onSave, isCreating = false, in
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <Dialog open={isOpen} onOpenChange={onClose} modal={false}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <div className="flex items-center justify-between">
@@ -431,6 +431,7 @@ export const DealForm = ({ deal, isOpen, onClose, onSave, isCreating = false, in
         onOpenChange={setTaskModalOpen}
         onSubmit={createTask}
         context={deal ? { module: 'deals', recordId: deal.id, locked: true } : undefined}
+        nested={true}
       />
     </Dialog>
   );
