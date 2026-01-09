@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, forwardRef, useImperativeHandle } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useCRUDAudit } from "@/hooks/useCRUDAudit";
@@ -23,10 +23,9 @@ import { AccountDetailModal } from "./accounts/AccountDetailModal";
 import { HighlightedText } from "./shared/HighlightedText";
 import { getAccountStatusColor } from "@/utils/accountStatusUtils";
 import { moveFieldToEnd } from "@/utils/columnOrderUtils";
+import { formatDateTimeStandard } from "@/utils/formatUtils";
 import { ClearFiltersButton } from "./shared/ClearFiltersButton";
 import { TableSkeleton } from "./shared/Skeletons";
-import { TaskModal } from "./tasks/TaskModal";
-import { useTasks } from "@/hooks/useTasks";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 // Export ref interface for parent component
@@ -155,14 +154,18 @@ const AccountTable = forwardRef<AccountTableRef, AccountTableProps>(({
   const [viewingAccount, setViewingAccount] = useState<Account | null>(null);
   const [detailModalDefaultTab, setDetailModalDefaultTab] = useState("overview");
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
-  const [taskModalOpen, setTaskModalOpen] = useState(false);
-  const [taskAccountId, setTaskAccountId] = useState<string | null>(null);
-
-  const { createTask } = useTasks();
+  const navigate = useNavigate();
 
   const handleCreateTask = (account: Account) => {
-    setTaskAccountId(account.id);
-    setTaskModalOpen(true);
+    const params = new URLSearchParams({
+      create: '1',
+      module: 'accounts',
+      recordId: account.id,
+      recordName: encodeURIComponent(account.company_name || 'Account'),
+      return: '/accounts',
+      returnViewId: account.id,
+    });
+    navigate(`/tasks?${params.toString()}`);
   };
 
   // viewId effect is moved below the accounts query
@@ -226,24 +229,30 @@ const AccountTable = forwardRef<AccountTableRef, AccountTableProps>(({
     refetchAccounts();
   };
 
-  // Handle viewId from URL (from global search)
+  // Handle viewId and tab from URL (from global search or return from Tasks)
   const viewId = searchParams.get('viewId');
+  const tabParam = searchParams.get('tab');
   useEffect(() => {
     if (viewId && accounts.length > 0) {
       const accountToView = accounts.find(a => a.id === viewId);
       if (accountToView) {
         setViewingAccount(accountToView);
+        // Set the tab if provided (e.g., returning from Tasks module)
+        if (tabParam) {
+          setDetailModalDefaultTab(tabParam);
+        }
         setShowDetailModal(true);
-        // Clear the viewId from URL after opening
+        // Clear the viewId and tab from URL after opening
         setSearchParams(prev => {
           prev.delete('viewId');
+          prev.delete('tab');
           return prev;
         }, {
           replace: true
         });
       }
     }
-  }, [viewId, accounts, setSearchParams]);
+  }, [viewId, tabParam, accounts, setSearchParams]);
 
   // Expose handleBulkDelete to parent via ref
   useImperativeHandle(ref, () => ({
@@ -640,6 +649,12 @@ const AccountTable = forwardRef<AccountTableRef, AccountTableProps>(({
                             ) : (
                               <span className="text-center text-muted-foreground w-full block">-</span>
                             )
+                          ) : column.field === 'created_at' || column.field === 'updated_at' ? (
+                            account[column.field as keyof Account] ? (
+                              <span className="text-sm">{formatDateTimeStandard(account[column.field as keyof Account] as string)}</span>
+                            ) : (
+                              <span className="text-center text-muted-foreground w-full block">-</span>
+                            )
                           ) : (
                             account[column.field as keyof Account] ? (
                               <span title={account[column.field as keyof Account]?.toString()} className="truncate block">{account[column.field as keyof Account]?.toString()}</span>
@@ -745,12 +760,6 @@ const AccountTable = forwardRef<AccountTableRef, AccountTableProps>(({
         defaultTab={detailModalDefaultTab}
       />
 
-      <TaskModal
-        open={taskModalOpen}
-        onOpenChange={setTaskModalOpen}
-        onSubmit={createTask}
-        context={taskAccountId ? { module: 'accounts', recordId: taskAccountId, locked: true } : undefined}
-      />
     </div>;
 });
 AccountTable.displayName = "AccountTable";

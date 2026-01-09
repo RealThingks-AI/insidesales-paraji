@@ -461,29 +461,20 @@ export const TaskModal = ({
     }
   };
 
-  const handleOpenChange = (newOpen: boolean) => {
-    onOpenChange(newOpen);
-    if (!newOpen && nested) {
-      // Restore pointer events after nested dialog closes
-      setTimeout(() => {
-        document.body.style.pointerEvents = 'auto';
-      }, 100);
-    }
-  };
-
   return (
     <>
-      <Dialog open={open} onOpenChange={handleOpenChange} modal={!nested}>
+      <Dialog open={open} onOpenChange={onOpenChange} modal={true}>
         <DialogContent 
-          className={cn(
-            "max-w-2xl max-h-[90vh] overflow-y-auto z-[200]",
-            nested && "z-[210]"
-          )}
-          showOverlay={!nested}
-          disableOutsidePointerEvents={false}
-          onOpenAutoFocus={(e) => { if (nested) e.preventDefault(); }}
-          onPointerDownOutside={(e) => { if (nested) e.preventDefault(); }}
-          onInteractOutside={(e) => { if (nested) e.preventDefault(); }}
+          className="max-w-2xl max-h-[90vh] overflow-y-auto animate-in fade-in-0 zoom-in-95 duration-200"
+          onOpenAutoFocus={(e) => {
+            // Ensure focus is properly set when dialog opens
+            setTimeout(() => {
+              const firstInput = document.querySelector('[data-radix-dialog-content] input:not([disabled])') as HTMLInputElement;
+              if (firstInput) {
+                firstInput.focus();
+              }
+            }, 50);
+          }}
         >
           <DialogHeader>
             <DialogTitle className="text-lg font-semibold">

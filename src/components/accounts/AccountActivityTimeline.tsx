@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { 
   Phone, 
@@ -14,6 +15,7 @@ import {
   Loader2,
   UserPlus,
   Video,
+  Plus,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ActivityDetailModal } from "@/components/shared/ActivityDetailModal";
@@ -30,6 +32,7 @@ interface TimelineItem {
 
 interface AccountActivityTimelineProps {
   accountId: string;
+  onAddActivity?: () => void;
 }
 
 const getActivityIcon = (type: string) => {
@@ -54,7 +57,7 @@ const getActivityColor = (type: string) => {
   }
 };
 
-export const AccountActivityTimeline = ({ accountId }: AccountActivityTimelineProps) => {
+export const AccountActivityTimeline = ({ accountId, onAddActivity }: AccountActivityTimelineProps) => {
   const [timeline, setTimeline] = useState<TimelineItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedActivity, setSelectedActivity] = useState<TimelineItem | null>(null);
@@ -214,7 +217,16 @@ export const AccountActivityTimeline = ({ accountId }: AccountActivityTimelinePr
 
   return (
     <>
-      <ScrollArea className="h-[350px]">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-sm font-medium text-muted-foreground">Activity Timeline</h3>
+        {onAddActivity && (
+          <Button size="sm" variant="outline" onClick={onAddActivity}>
+            <Plus className="h-4 w-4 mr-1" />
+            Add Activity
+          </Button>
+        )}
+      </div>
+      <ScrollArea className="h-[450px] max-h-[60vh]">
         <div className="relative pl-6">
           {/* Timeline line */}
           <div className="absolute left-2 top-2 bottom-2 w-0.5 bg-border" />
